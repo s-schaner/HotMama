@@ -51,11 +51,10 @@ def flash_attn_supported(torch_ver: str, cuda_ver: str, sm: str) -> bool:
     return False
 
 CORE_PACKAGES = [
-    "fastapi>=0.115,<0.116",
-    "uvicorn[standard]>=0.30,<0.31",
-    "jinja2>=3,<4",
+    "fastapi",
+    "uvicorn",
+    "jinja2",
     "python-multipart",
-    "pydantic>=2,<3",
     "requests",
     "pillow",
     "numpy",
