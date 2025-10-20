@@ -1,6 +1,6 @@
 # VolleySense
 
-VolleySense is a modular volleyball analytics toolkit with a Gradio UI. It ingests volleyball video, orchestrates plugin-based analysis, and maintains structured stats in SQLite for reproducible scouting workflows.
+VolleySense is a modular volleyball analytics toolkit with a FastAPI-powered web UI. It ingests volleyball video, orchestrates plugin-based analysis, and maintains structured stats in SQLite for reproducible scouting workflows.
 
 ## Prerequisites
 
@@ -11,7 +11,7 @@ VolleySense is a modular volleyball analytics toolkit with a Gradio UI. It inges
 ## Installation
 
 Run the single-command installer. It prints detailed progress to the console and also saves a full transcript to `tools/install.log` so you can diagnose failures (especially helpful on WSL).
-VolleySense is a modular volleyball analytics toolkit with a Gradio UI. It ingests video sessions, orchestrates plugin-based analysis, and maintains structured stats in SQLite.
+VolleySense is a modular volleyball analytics toolkit with a FastAPI + Jinja frontend. It ingests video sessions, orchestrates plugin-based analysis, and maintains structured stats in SQLite.
 
 ## Setup
 
@@ -21,10 +21,10 @@ python tools/install.py
 
 The installer attempts to:
 
-1. Install core Python dependencies such as Gradio, Ultralytics, and NumPy.
+1. Install core Python dependencies such as FastAPI, Uvicorn, Ultralytics, and NumPy.
 2. Resolve OpenCV with a headless build first, then fall back to the desktop build if necessary.
 3. Pull GPU-accelerated extras (PyTorch CUDA wheels, ONNX Runtime GPU, TensorRT, FlashAttention) on a best-effort basis.
-4. Verify critical imports (`gradio`, `numpy`, `matplotlib`).
+4. Verify critical imports (`fastapi`, `numpy`, `matplotlib`).
 
 If a package fails, consult the tail of the stdout/stderr block in the terminal or open `tools/install.log` for the complete history. The script exits non-zero when a core dependency cannot be installed or imported.
 
@@ -42,7 +42,7 @@ The installer surfaces the detected Python executable and platform in the log he
 
 ## Launching the App
 
-Start the Gradio interface from the project root:
+Start the FastAPI interface from the project root:
 ## Run
 
 ```
@@ -51,11 +51,10 @@ python -m app.main
 
 Common flags:
 
-- `--share` exposes a temporary Gradio share URL for remote QA.
-- `--auth user pass` enables lightweight HTTP basic auth (`user`/`pass`).
-- `--config path/to/config.yaml` loads a custom configuration profile (see `app/config.py`).
+- `--host` controls the interface to bind (defaults to `0.0.0.0`).
+- `--port` selects the serving port (defaults to `7860`).
 
-You should see tabs for Session management, Roster editing, Clip ingestion, LLM analysis, Heatmaps, and any registered plugin panels. Logs appear in the terminal and in `sessions/<session_id>/logs/` once sessions are created.
+Open `http://<host>:<port>/` to access the upload form, run LLM analyses, and generate CSV-driven heatmaps. Logs appear in the terminal and in `sessions/<session_id>/logs/` once sessions are created.
 
 ## Typical Workflow
 
@@ -82,7 +81,7 @@ pytest -q
 ```
 
 The suite exercises session lifecycles, plugin isolation, LLM parsing, tracking fusion, and the heatmap renderer.
-Use `--share` for remote debugging and `--auth user pass` to enable simple authentication.
+Adjust the `--host` / `--port` flags when deploying the FastAPI server behind a proxy or container orchestrator.
 
 ## Tests
 
