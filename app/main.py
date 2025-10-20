@@ -2,33 +2,31 @@ from __future__ import annotations
 
 import argparse
 import logging
-from pathlib import Path
+import os
 
-from app.bus import EventBus
 from app.config import load_config
 from app.logging import configure_logging
-from session.service import SessionService
-from ui.gradio_app import GradioVolleyApp
+from webapp.server import run as run_server
 
 
 LOGGER = logging.getLogger(__name__)
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="VolleySense Gradio App")
-    parser.add_argument("--share", action="store_true", help="Launch Gradio with share mode")
-    parser.add_argument("--auth", nargs=2, metavar=("USER", "PASS"), help="Optional basic auth")
+    parser = argparse.ArgumentParser(description="VolleySense FastAPI App")
+    parser.add_argument("--host", default="0.0.0.0", help="Host interface to bind")
+    parser.add_argument("--port", type=int, default=7860, help="Port to serve on")
     args = parser.parse_args()
 
     config = load_config()
     configure_logging(config.sessions_dir / "logs")
-    LOGGER.info("Starting VolleySense", extra={"db_url": config.db_url})
+    os.environ.setdefault("VOLLEYSENSE_SESSIONS", str(config.sessions_dir))
+    LOGGER.info(
+        "Starting VolleySense FastAPI server",
+        extra={"host": args.host, "port": args.port, "sessions_dir": str(config.sessions_dir)},
+    )
 
-    service = SessionService(config.db_url, config.sessions_dir)
-    bus = EventBus()
-    app = GradioVolleyApp(service, config.sessions_dir, Path("plugins"), bus)
-    auth_tuple = tuple(args.auth) if args.auth else None
-    app.launch(share=args.share, auth=auth_tuple)
+    run_server(host=args.host, port=args.port)
 
 
 if __name__ == "__main__":
