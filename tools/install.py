@@ -8,12 +8,53 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Iterable, List, Sequence
 
+
+def torch_env() -> tuple[str, str, str]:
+    try:
+        import torch  # type: ignore[import-not-found]
+
+        cuda = torch.version.cuda or ""
+        sm = ""
+        if torch.cuda.is_available():
+            major, minor = torch.cuda.get_device_capability(0)
+            sm = f"sm_{major}{minor}"
+        return torch.__version__, cuda, sm
+    except Exception:
+        return "", "", ""
+
+
+def flash_attn_supported(torch_ver: str, cuda_ver: str, sm: str) -> bool:
+    """
+    Be conservative: only allow when wheels are typically available.
+    Adjust as upstream support grows.
+    """
+
+    if not torch_ver or not cuda_ver:
+        return False
+    if not (
+        cuda_ver.startswith(
+            (
+                "11.8",
+                "12.1",
+                "12.2",
+                "12.3",
+                "12.4",
+                "12.5",
+                "12.6",
+                "12.7",
+            )
+        )
+    ):
+        return False
+    if sm in ("sm_80", "sm_86", "sm_89", "sm_90"):
+        return True
+    return False
+
 CORE_PACKAGES = ["gradio", "requests", "pillow", "numpy", "ultralytics", "matplotlib"]
 OPENCV_PACKAGES = ["opencv-python-headless", "opencv-python"]
 GPU_PACKAGES = [
     ["torch", "torchvision", "--index-url", "https://download.pytorch.org/whl/cu121"],
 ]
-EXTRAS = [["onnxruntime-gpu"], ["flash-attn"], ["tensorrt"]]
 LOG_PATH = Path(__file__).with_name("install.log")
 
 
@@ -137,8 +178,17 @@ def install() -> int:
         attempt_install(pkg, report)
 
     _log("Installing optional extras...")
-    for pkg in EXTRAS:
-        attempt_install(pkg, report)
+    attempt_install(["onnxruntime-gpu"], report)
+
+    tver, cver, sm = torch_env()
+    if flash_attn_supported(tver, cver, sm):
+        attempt_install(["flash-attn", "--no-build-isolation"], report)
+    else:
+        message = f"skipped (torch={tver}, cuda={cver}, arch={sm})"
+        report.record("flash-attn", False, message)
+        _log(f"❌ flash-attn: {message}")
+
+    attempt_install(["tensorrt"], report)
 
     check_imports(["gradio", "numpy", "matplotlib"], report)
 

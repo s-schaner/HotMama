@@ -28,6 +28,8 @@ The installer attempts to:
 
 If a package fails, consult the tail of the stdout/stderr block in the terminal or open `tools/install.log` for the complete history. The script exits non-zero when a core dependency cannot be installed or imported.
 
+FlashAttention is optional and will be skipped on unsupported combos (for example, early Blackwell `sm_120`). If you need it, make sure you're on a supported CUDA/PyTorch pair and that a prebuilt wheel exists for your architecture; otherwise a source build may require matching CUDA toolkits and compilers.
+
 ### Windows Subsystem for Linux (WSL)
 
 When running inside WSL, ensure that:
