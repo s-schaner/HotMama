@@ -50,7 +50,18 @@ def flash_attn_supported(torch_ver: str, cuda_ver: str, sm: str) -> bool:
         return True
     return False
 
-CORE_PACKAGES = ["gradio", "requests", "pillow", "numpy", "ultralytics", "matplotlib"]
+CORE_PACKAGES = [
+    "fastapi>=0.115,<0.116",
+    "uvicorn[standard]>=0.30,<0.31",
+    "jinja2>=3,<4",
+    "python-multipart",
+    "pydantic>=2,<3",
+    "requests",
+    "pillow",
+    "numpy",
+    "ultralytics",
+    "matplotlib",
+]
 OPENCV_PACKAGES = ["opencv-python-headless", "opencv-python"]
 GPU_PACKAGES = [
     ["torch", "torchvision", "--index-url", "https://download.pytorch.org/whl/cu121"],
@@ -190,7 +201,7 @@ def install() -> int:
 
     attempt_install(["tensorrt"], report)
 
-    check_imports(["gradio", "numpy", "matplotlib"], report)
+    check_imports(["fastapi", "numpy", "matplotlib"], report)
 
     return finalize(report, 0 if not report.failure else 1)
 
