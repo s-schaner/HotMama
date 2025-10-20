@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import importlib.machinery
-import importlib.util
+import importlib
 import os
 import sys
 from types import ModuleType
+import warnings
 
 
 def _samefile(path1: str, path2: str) -> bool:
@@ -19,29 +19,23 @@ _real_gradio: ModuleType | None = None
 if os.environ.get("GRADIO_STUB_ONLY") != "1":
     _stub_dir = os.path.dirname(__file__)
     _stub_root = os.path.dirname(_stub_dir)
-    _checked_paths: list[str] = []
 
-    for _entry in sys.path:
-        _candidate = _entry or os.getcwd()
-        if not _candidate or _candidate in _checked_paths:
-            continue
-        _checked_paths.append(_candidate)
-        if _samefile(_candidate, _stub_root) or _samefile(_candidate, _stub_dir):
-            continue
+    def _is_stub_path(entry: str) -> bool:
+        candidate = entry or os.getcwd()
+        return _samefile(candidate, _stub_root) or _samefile(candidate, _stub_dir)
 
-        _spec = importlib.machinery.PathFinder.find_spec(__name__, [_candidate])
-        if not _spec or not _spec.loader or not _spec.origin:
-            continue
-        if _samefile(_spec.origin, __file__):
-            continue
-
-        _module = importlib.util.module_from_spec(_spec)
-        try:
-            _spec.loader.exec_module(_module)  # type: ignore[call-arg]
-        except ModuleNotFoundError:
-            continue
-        _real_gradio = _module
-        break
+    _original_module = sys.modules.get(__name__)
+    _original_sys_path = list(sys.path)
+    try:
+        sys.modules.pop(__name__, None)
+        sys.path = [entry for entry in _original_sys_path if not _is_stub_path(entry)]
+        _real_gradio = importlib.import_module(__name__)
+    except ModuleNotFoundError:
+        _real_gradio = None
+    finally:
+        sys.path = _original_sys_path
+        if _real_gradio is None and _original_module is not None:
+            sys.modules[__name__] = _original_module
 
 if _real_gradio is not None:
     sys.modules[__name__] = _real_gradio
@@ -51,6 +45,12 @@ if _real_gradio is not None:
             continue
         globals()[_name] = _value
 else:
+    warnings.warn(
+        "Real 'gradio' package not found. Using stub implementation; the UI will not launch."
+        " Install the 'gradio' package or set GRADIO_STUB_ONLY=1 to silence this warning.",
+        RuntimeWarning,
+        stacklevel=2,
+    )
     from typing import Any, Callable, List
 
     class Component:
