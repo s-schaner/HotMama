@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import json
 import os
+from pathlib import Path
 from typing import List, Tuple
 
 from fastapi import FastAPI
@@ -17,6 +18,7 @@ from core.analysis import (
     extract_frames,
     render_heatmap,
 )
+from viz.heatmap import render_heatmap_sexy
 
 
 SESSION_DIR = os.environ.get(
@@ -27,6 +29,12 @@ os.makedirs(SESSION_DIR, exist_ok=True)
 app = FastAPI(title="VolleySense")
 app.mount("/static", StaticFiles(directory="webapp/static"), name="static")
 templates = Jinja2Templates(directory="webapp/templates")
+
+
+def _coerce_bool(value: str | bool) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value).lower() in {"1", "true", "on", "yes"}
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -162,7 +170,18 @@ async def analyze_htmx(
 
 
 @app.post("/heatmap")
-async def heatmap(csvfile: UploadFile = File(...)) -> FileResponse:
+async def heatmap(
+    request: Request,
+    csvfile: UploadFile = File(...),
+    theme: str = Form("dark"),
+    colormap: str = Form("magma"),
+    density_scale: float = Form(1.0),
+    density_sigma: float = Form(1.0),
+    show_contours: str = Form("True"),
+    draw_trail: str = Form("True"),
+    trail_width_px: float = Form(10.0),
+) -> FileResponse:
+    _ = request
     data = (await csvfile.read()).decode("utf-8").splitlines()
     reader = csv.reader(data)
 
@@ -179,7 +198,21 @@ async def heatmap(csvfile: UploadFile = File(...)) -> FileResponse:
         "heatmaps",
         f"heatmap_{os.path.basename(csvfile.filename)}.png",
     )
-    saved_path = render_heatmap(points, out_path)
+    try:
+        saved_path = render_heatmap_sexy(
+            points,
+            out_path,
+            theme="dark" if theme not in {"dark", "light"} else theme,
+            colormap=colormap or "magma",
+            density_scale=float(density_scale),
+            density_sigma_mul=float(density_sigma),
+            show_contours=_coerce_bool(show_contours),
+            draw_trail=_coerce_bool(draw_trail),
+            trail_width_px=float(trail_width_px),
+        )
+    except Exception:
+        saved_path = Path(render_heatmap(points, out_path))
+
     return FileResponse(saved_path, media_type="image/png")
 
 
