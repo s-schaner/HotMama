@@ -21,10 +21,10 @@ __all__ = [
 ]
 
 
-def b64_image_data_uri(frame: np.ndarray, q: int = 85) -> str:
+def b64_image_data_uri(frame, q=85) -> str:
     """Convert an OpenCV frame to a base64-encoded JPEG data URI."""
     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    ok, enc = cv2.imencode(".jpg", rgb, [int(cv2.IMWRITE_JPEG_QUALITY), int(q)])
+    ok, enc = cv2.imencode(".jpg", rgb, [int(cv2.IMWRITE_JPEG_QUALITY), q])
     if not ok:
         raise RuntimeError("JPEG encode failed")
     return "data:image/jpeg;base64," + base64.b64encode(enc.tobytes()).decode()
