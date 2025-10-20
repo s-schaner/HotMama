@@ -11,6 +11,9 @@ VolleySense is a modular volleyball analytics toolkit with a Gradio UI. It inges
 ## Installation
 
 Run the single-command installer. It prints detailed progress to the console and also saves a full transcript to `tools/install.log` so you can diagnose failures (especially helpful on WSL).
+VolleySense is a modular volleyball analytics toolkit with a Gradio UI. It ingests video sessions, orchestrates plugin-based analysis, and maintains structured stats in SQLite.
+
+## Setup
 
 ```
 python tools/install.py
@@ -38,6 +41,7 @@ The installer surfaces the detected Python executable and platform in the log he
 ## Launching the App
 
 Start the Gradio interface from the project root:
+## Run
 
 ```
 python -m app.main
@@ -76,3 +80,10 @@ pytest -q
 ```
 
 The suite exercises session lifecycles, plugin isolation, LLM parsing, tracking fusion, and the heatmap renderer.
+Use `--share` for remote debugging and `--auth user pass` to enable simple authentication.
+
+## Tests
+
+```
+pytest -q
+```
