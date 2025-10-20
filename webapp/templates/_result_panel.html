@@ -1,0 +1,14 @@
+<div class="card-body">
+  <h2 class="card-title">Analysis</h2>
+
+  <div class="mt-2">
+    <h3 class="font-semibold">Summary</h3>
+    <pre class="bg-base-200 p-3 rounded whitespace-pre-wrap">{{ pretty }}</pre>
+  </div>
+
+  <div class="divider">Raw JSON</div>
+  <pre class="bg-base-200 p-3 rounded text-xs overflow-x-auto">{{ raw }}</pre>
+
+  <div class="divider">Meta</div>
+  <div class="text-sm opacity-80">src_fps={{ meta.src_fps }} | frames={{ meta.frames }} | duration={{ meta.duration }}s</div>
+</div>

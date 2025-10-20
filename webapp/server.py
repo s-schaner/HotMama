@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import json
 import os
 from typing import List, Tuple
 
@@ -33,12 +34,24 @@ async def index(request: Request) -> HTMLResponse:
     return templates.TemplateResponse("index.html", {"request": request})
 
 
-@app.post("/analyze")
-async def analyze(
+@app.get("/_partial/heatmap", response_class=HTMLResponse)
+async def partial_heatmap(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse("_heatmap_panel.html", {"request": request})
+
+
+@app.get("/_partial/sessions", response_class=HTMLResponse)
+async def partial_sessions(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse("_sessions_panel.html", {"request": request})
+
+
+@app.post("/_api/analyze", response_class=HTMLResponse)
+async def analyze_htmx(
     request: Request,
     video: UploadFile = File(...),
     prompt: str = Form(
-        "Describe rally; output JSON with rally_state, who_won, reason, timeline[{t,event,actor}]"
+        "Describe rally; output STRICT JSON with:\n"
+        '{"rally_state": "...", "who_won": "teamA|teamB|null", "reason":"...", '
+        '"timeline":[{"t": 12.3, "event":"attack", "actor":"teamA#12"}]}'
     ),
     endpoint: str = Form(...),
     token: str = Form(""),
@@ -54,34 +67,49 @@ async def analyze(
     with open(tmp_path, "wb") as fh:
         fh.write(data)
 
-    frames, meta = extract_frames(tmp_path, float(fps), int(max_frames))
-    images = [b64_image_data_uri(frame) for frame in frames]
-    content = [{"type": "text", "text": prompt}]
-    content.extend({"type": "image_url", "image_url": {"url": url}} for url in images)
-    messages = [{"role": "user", "content": content}]
+    try:
+        frames, meta = extract_frames(tmp_path, float(fps), int(max_frames))
+        images = [b64_image_data_uri(frame) for frame in frames]
+        content = [{"type": "text", "text": prompt}]
+        content.extend(
+            {"type": "image_url", "image_url": {"url": url}} for url in images
+        )
+        messages = [{"role": "user", "content": content}]
 
-    response = call_endpoint_openai_chat(
-        endpoint,
-        token or None,
-        model,
-        messages,
-        fps,
-        max_pixels,
-        max_tokens,
-        temperature,
-    )
-    reply = (
-        response.get("choices", [{}])[0]
-        .get("message", {})
-        .get("content", str(response))
-    )
-    context = {
-        "request": request,
-        "reply": reply,
-        "meta": meta,
-        "video_name": video.filename,
-    }
-    return templates.TemplateResponse("results.html", context)
+        response = call_endpoint_openai_chat(
+            endpoint,
+            token or None,
+            model,
+            messages,
+            fps,
+            max_pixels,
+            max_tokens,
+            temperature,
+        )
+        raw = json.dumps(response, indent=2)
+        pretty = (
+            response.get("choices", [{}])[0]
+            .get("message", {})
+            .get("content", "")
+            .strip()
+        )
+        context = {
+            "request": request,
+            "pretty": pretty or "(No content)",
+            "raw": raw,
+            "meta": meta,
+        }
+        return templates.TemplateResponse("_result_panel.html", context)
+    except Exception as exc:
+        return HTMLResponse(
+            f"<div class='alert alert-error'><span>Error: {exc}</span></div>",
+            status_code=500,
+        )
+    finally:
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
 
 
 @app.post("/heatmap")

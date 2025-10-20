@@ -1,0 +1,17 @@
+<div class="grid grid-cols-1 gap-6">
+  <section class="card bg-base-100 shadow">
+    <div class="card-body">
+      <h2 class="card-title">Generate Heatmap</h2>
+      <p class="text-sm opacity-70">Upload a CSV with <code>x,y,h</code> columns to render a court heatmap.</p>
+      <form action="/heatmap" method="post" enctype="multipart/form-data" target="_blank" onsubmit="showToast('Rendering heatmap...', 'info')">
+        <div class="form-control">
+          <label class="label"><span class="label-text">CSV File</span></label>
+          <input type="file" name="csvfile" class="file-input file-input-bordered w-full" accept=".csv" required />
+        </div>
+        <div class="card-actions justify-end mt-4">
+          <button class="btn btn-secondary" type="submit">Open Heatmap</button>
+        </div>
+      </form>
+    </div>
+  </section>
+</div>
