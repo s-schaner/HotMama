@@ -13,7 +13,7 @@ RUN apt-get update && \
 COPY . /app
 
 RUN python -m pip install --upgrade pip && \
-    python tools/install.py --profile cpu
+    python -m tools.install --profile cpu
 
 ENV VOLLEYSENSE_HOST=0.0.0.0 \
     VOLLEYSENSE_PORT=8000 \
