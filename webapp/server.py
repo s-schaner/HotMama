@@ -38,6 +38,7 @@ from viz.trajectory import (
     run_heatmap_pipeline,
 )
 from webapp.presets import EndpointPreset, load_presets, upsert_preset
+from session.api import router as session_router
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +115,9 @@ if settings.enable_cors:
         allow_headers=["*"],
     )
 
+# Include API routers
+app.include_router(session_router)
+
 # Mount static files
 app.mount("/static", StaticFiles(directory="webapp/static"), name="static")
 app.mount("/assets", StaticFiles(directory=SESSION_PATH), name="assets")
@@ -164,8 +168,22 @@ async def partial_heatmap(request: Request) -> HTMLResponse:
 
 
 @app.get("/_partial/sessions", response_class=HTMLResponse)
-async def partial_sessions(request: Request) -> HTMLResponse:
-    return templates.TemplateResponse("_sessions_panel.html", {"request": request})
+async def partial_sessions(
+    request: Request,
+    settings: Settings = Depends(get_settings),
+) -> HTMLResponse:
+    """Render the session management dashboard panel."""
+    from session.service import SessionService
+
+    db_url = settings.db_url or f"sqlite:///{settings.sessions_dir / 'volleysense.db'}"
+    service = SessionService(db_url, settings.sessions_dir)
+
+    sessions = service.list_sessions(limit=50)
+    context = {
+        "request": request,
+        "sessions": sessions,
+    }
+    return templates.TemplateResponse("session/dashboard.html", context)
 
 
 @app.post("/_api/analyze", response_class=HTMLResponse)

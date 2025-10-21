@@ -1,0 +1,75 @@
+<form
+  hx-post="/_api/sessions"
+  hx-target="#sessions-list"
+  hx-swap="afterbegin"
+  hx-on::after-request="if(event.detail.successful){showToast('Session created', 'success'); document.getElementById('session_create_modal').close(); window.location.reload();}"
+  class="space-y-4">
+
+  <div class="form-control">
+    <label class="label">
+      <span class="label-text">Session Title</span>
+      <span class="label-text-alt text-error">*</span>
+    </label>
+    <input
+      type="text"
+      name="title"
+      placeholder="e.g., Championship Final 2024"
+      class="input input-bordered w-full"
+      required />
+    <label class="label">
+      <span class="label-text-alt">Give your session a memorable name</span>
+    </label>
+  </div>
+
+  <div class="form-control">
+    <label class="label">
+      <span class="label-text">Venue</span>
+    </label>
+    <input
+      type="text"
+      name="venue"
+      placeholder="e.g., City Sports Arena"
+      class="input input-bordered w-full" />
+    <label class="label">
+      <span class="label-text-alt">Where is the match taking place?</span>
+    </label>
+  </div>
+
+  <div class="form-control">
+    <label class="label">
+      <span class="label-text">Match Date</span>
+    </label>
+    <input
+      type="date"
+      name="match_date"
+      class="input input-bordered w-full" />
+  </div>
+
+  <div class="form-control">
+    <label class="label">
+      <span class="label-text">Additional Notes (Optional)</span>
+    </label>
+    <textarea
+      name="notes"
+      placeholder="Match notes, weather conditions, special circumstances, etc."
+      class="textarea textarea-bordered w-full"
+      rows="3"></textarea>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="modal-action">
+    <button
+      type="button"
+      class="btn"
+      onclick="document.getElementById('session_create_modal').close()">
+      Cancel
+    </button>
+    <button type="submit" class="btn btn-primary">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+      </svg>
+      Create Session
+    </button>
+  </div>
+</form>
