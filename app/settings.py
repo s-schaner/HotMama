@@ -71,6 +71,36 @@ class Settings(BaseSettings):
     enable_caching: bool = Field(default=True, description="Enable response caching")
     cache_ttl_seconds: int = Field(default=3600, ge=60, description="Cache TTL in seconds")
 
+    # Player tracking settings
+    yolo_model: str = Field(default="yolov8n", description="YOLO model to use (yolov8n/s/m/l/x)")
+    detection_confidence: float = Field(default=0.25, ge=0.0, le=1.0, description="YOLO detection confidence threshold")
+    detection_iou: float = Field(default=0.45, ge=0.0, le=1.0, description="YOLO IoU threshold for NMS")
+    detection_device: str | None = Field(default=None, description="Device for detection (cpu/cuda/cuda:0, auto if None)")
+
+    # Tracking settings
+    tracking_max_age: int = Field(default=30, ge=1, description="Max frames to keep track alive without detections")
+    tracking_min_hits: int = Field(default=3, ge=1, description="Min detections before track is confirmed")
+    tracking_iou_threshold: float = Field(default=0.3, ge=0.0, le=1.0, description="Min IoU for track-detection association")
+
+    # Pose estimation settings
+    enable_pose_estimation: bool = Field(default=True, description="Enable pose estimation")
+    pose_model_type: str = Field(default="mediapipe", description="Pose model type (mediapipe/yolov8-pose)")
+    pose_model_complexity: int = Field(default=1, ge=0, le=2, description="Pose model complexity (0=lite, 1=full, 2=heavy)")
+    pose_min_confidence: float = Field(default=0.5, ge=0.0, le=1.0, description="Min confidence for pose detection")
+
+    # Overlay settings
+    enable_video_overlays: bool = Field(default=True, description="Enable video overlays by default")
+    overlay_draw_boxes: bool = Field(default=True, description="Draw bounding boxes")
+    overlay_draw_pose: bool = Field(default=True, description="Draw pose skeletons")
+    overlay_draw_trails: bool = Field(default=True, description="Draw movement trails")
+    overlay_trail_length: int = Field(default=30, ge=5, le=100, description="Trail length in frames")
+
+    # Analytics settings
+    enable_player_analytics: bool = Field(default=True, description="Enable player analytics")
+    enable_heatmap_generation: bool = Field(default=True, description="Enable heatmap generation")
+    heatmap_kernel_size: int = Field(default=25, ge=5, le=100, description="Gaussian kernel size for heatmap smoothing")
+    heatmap_decay_factor: float = Field(default=0.95, ge=0.5, le=1.0, description="Temporal decay factor for heatmap")
+
     def get_db_url(self) -> str:
         """Get the database URL, with fallback to default SQLite location."""
         if self.db_url:

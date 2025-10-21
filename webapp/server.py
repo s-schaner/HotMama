@@ -471,6 +471,179 @@ async def heatmap(
     return FileResponse(saved_path, media_type="image/png")
 
 
+# ================================================================================
+# Analytics Endpoints for Player Tracking and Stats
+# ================================================================================
+
+
+@app.post("/_api/analytics/process_video")
+async def process_video_with_tracking(
+    session_id: str = Form(...),
+    video: UploadFile = File(...),
+    enable_pose: bool = Form(True),
+    enable_overlays: bool = Form(True),
+    yolo_model: str = Form("yolov8n"),
+    detection_confidence: float = Form(0.25),
+    settings: Settings = Depends(get_settings),
+):
+    """
+    Process video with YOLO detection, tracking, and pose estimation.
+
+    Returns tracking results and generates overlay video.
+    """
+    from ingest.video_pipeline import VideoProcessingPipeline, PipelineConfig
+    from viz.overlays import OverlayConfig
+
+    # Validate video upload
+    validate_video_upload(video, settings)
+
+    # Create session directory
+    session_dir = SESSION_PATH / session_id
+    session_dir.mkdir(parents=True, exist_ok=True)
+
+    # Save uploaded video
+    video_filename = f"{uuid.uuid4().hex}_{video.filename}"
+    video_path = session_dir / "clips" / video_filename
+    video_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with open(video_path, "wb") as f:
+        shutil.copyfileobj(video.file, f)
+
+    # Configure pipeline
+    overlay_config = OverlayConfig(
+        draw_boxes=enable_overlays,
+        draw_pose=enable_pose and enable_overlays,
+        draw_trails=enable_overlays,
+        draw_stats=False,  # Don't overlay stats on video
+    )
+
+    pipeline_config = PipelineConfig(
+        yolo_model=yolo_model,
+        detection_confidence=detection_confidence,
+        enable_pose=enable_pose,
+        enable_overlays=enable_overlays,
+        overlay_config=overlay_config,
+        enable_heatmap=True,
+    )
+
+    # Initialize pipeline
+    pipeline = VideoProcessingPipeline(config=pipeline_config)
+
+    # Output path for video with overlays
+    output_path = session_dir / "processed" / f"tracked_{video_filename}"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Process video
+    try:
+        result = pipeline.process_video(
+            str(video_path),
+            output_path=str(output_path) if enable_overlays else None,
+        )
+
+        # Get player analytics
+        analytics = pipeline.get_player_analytics(result)
+
+        # Save heatmap if generated
+        heatmap_path = None
+        if result.heatmap is not None:
+            heatmap_path = session_dir / "heatmaps" / f"heatmap_{video_filename}.png"
+            heatmap_path.parent.mkdir(parents=True, exist_ok=True)
+            import cv2
+            cv2.imwrite(str(heatmap_path), result.heatmap)
+
+        return JSONResponse({
+            "success": True,
+            "video_path": _public_url(video_path),
+            "output_path": _public_url(output_path) if enable_overlays else None,
+            "heatmap_path": _public_url(heatmap_path) if heatmap_path else None,
+            "total_frames": result.total_frames,
+            "processed_frames": result.processed_frames,
+            "total_tracks": len(result.track_histories),
+            "analytics": analytics,
+        })
+
+    except Exception as e:
+        logger.error(f"Video processing failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Video processing failed: {str(e)}")
+
+
+@app.get("/_api/analytics/stats")
+async def get_analytics_stats(
+    session_id: str | None = None,
+):
+    """
+    Get comprehensive player statistics.
+
+    If session_id is provided, returns stats for that session.
+    Otherwise returns aggregate stats across all sessions.
+    """
+    from scoring.stats import StatsAccumulator
+    from session.service import SessionService
+
+    # This is a simplified version - in production you'd load from database
+    # For now, return mock data or load from session artifacts
+
+    if session_id:
+        # Load stats for specific session
+        with SessionService(settings.db_url) as svc:
+            session = svc.get_session(session_id)
+            if not session:
+                raise HTTPException(status_code=404, detail="Session not found")
+
+            # Get rollup stats
+            rollup = svc.get_rollup(session_id)
+
+            # Convert to player format
+            players = []
+            for stat in rollup:
+                players.append({
+                    "track_id": stat.get("track_id", 0),
+                    "team": stat.get("team_side", ""),
+                    "number": stat.get("number", ""),
+                    "event_type": stat.get("event_type", ""),
+                    "count": stat.get("count", 0),
+                })
+
+            return JSONResponse({"players": players})
+    else:
+        # Return empty for now - could implement cross-session analytics
+        return JSONResponse({"players": []})
+
+
+@app.post("/_api/analytics/export")
+async def export_analytics(
+    session_id: str = Form(...),
+):
+    """
+    Export analytics data as CSV.
+    """
+    from scoring.stats import StatsAccumulator
+    from session.service import SessionService
+
+    with SessionService(settings.db_url) as svc:
+        # Export session data to CSV
+        export_result = svc.export_csv(session_id)
+
+        if export_result.events_csv and Path(export_result.events_csv).exists():
+            return FileResponse(
+                export_result.events_csv,
+                media_type="text/csv",
+                filename=f"stats_{session_id}.csv"
+            )
+        else:
+            raise HTTPException(status_code=404, detail="No analytics data found")
+
+
+@app.get("/_partial/analytics")
+async def analytics_dashboard_partial(request: Request):
+    """Render analytics dashboard partial."""
+    templates = Jinja2Templates(directory="webapp/templates")
+    return templates.TemplateResponse(
+        "_analytics_dashboard.html",
+        {"request": request}
+    )
+
+
 def run(host: str = "0.0.0.0", port: int = 7860) -> None:
     import uvicorn
 
