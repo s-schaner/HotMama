@@ -8,7 +8,7 @@ import os
 import shutil
 import uuid
 from pathlib import Path
-from typing import List, Tuple
+from typing import Annotated, List, Tuple
 
 from fastapi import Depends, FastAPI
 from fastapi import File, Form, HTTPException, Request, UploadFile
@@ -190,7 +190,7 @@ async def partial_sessions(
 @limiter.limit(f"{settings.rate_limit_per_minute}/minute")
 async def analyze_htmx(
     request: Request,
-    video: UploadFile = File(...),
+    video: Annotated[UploadFile, File(...)],
     prompt: str = Form(
         "describe the visualized plays, describe each point, the sequence of events in the point, the touches in the point, broken down by who (color and roster number) on each team did what."
     ),
@@ -357,7 +357,7 @@ async def analyze_htmx(
 @app.post("/_api/heatmap_pipeline", response_class=HTMLResponse)
 async def heatmap_pipeline(
     request: Request,
-    video: UploadFile = File(...),
+    video: Annotated[UploadFile, File(...)],
     method: str = Form("auto"),
     stride: int = Form(2),
     smoothing: int = Form(3),
@@ -427,7 +427,7 @@ async def heatmap_pipeline(
 @app.post("/heatmap")
 async def heatmap(
     request: Request,
-    csvfile: UploadFile = File(...),
+    csvfile: Annotated[UploadFile, File(...)],
     theme: str = Form("dark"),
     colormap: str = Form("magma"),
     density_scale: float = Form(1.0),
@@ -479,7 +479,7 @@ async def heatmap(
 @app.post("/_api/analytics/process_video")
 async def process_video_with_tracking(
     session_id: str = Form(...),
-    video: UploadFile = File(...),
+    video: Annotated[UploadFile, File(...)],
     enable_pose: bool = Form(True),
     enable_overlays: bool = Form(True),
     yolo_model: str = Form("yolov8n"),
