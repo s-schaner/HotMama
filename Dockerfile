@@ -22,4 +22,4 @@ ENV VOLLEYSENSE_HOST=0.0.0.0 \
 
 EXPOSE 8000
 
-ENTRYPOINT ["python", "docker/start.py"]
+ENTRYPOINT ["python", "-m", "docker.start"]
