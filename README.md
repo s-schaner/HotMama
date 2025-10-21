@@ -10,7 +10,7 @@ VolleySense is a modular volleyball analytics toolkit with a FastAPI-powered web
 
 ## Installation
 
-Run the single-command installer. It prints detailed progress to the console and also saves a full transcript to `tools/install.log` so you can diagnose failures (especially helpful on WSL).
+Run the single-command installer. It now performs a lightweight GPU driver scan, locks dependency versions to tested combinations, and bails out early when the active Python version is outside the supported window. Detailed progress is echoed to the console and mirrored to `tools/install.log` so you can diagnose failures (especially helpful on WSL).
 VolleySense is a modular volleyball analytics toolkit with a FastAPI + Jinja frontend. It ingests video sessions, orchestrates plugin-based analysis, and maintains structured stats in SQLite.
 
 ## Setup
@@ -18,6 +18,8 @@ VolleySense is a modular volleyball analytics toolkit with a FastAPI + Jinja fro
 ```
 python tools/install.py
 ```
+
+Pass `--profile cpu|nvidia|amd` to override the auto-detected dependency profile, or `--attempt-driver-adjust` if you would like the installer to poke the available GPU management tools (for example, enabling NVIDIA persistence mode when supported). These switches are optional; by default the script records diagnostics without touching the driver stack.
 
 The installer attempts to:
 
@@ -43,7 +45,6 @@ The installer surfaces the detected Python executable and platform in the log he
 ## Launching the App
 
 Start the FastAPI interface from the project root:
-## Run
 
 ```
 python -m app.main
@@ -54,7 +55,23 @@ Common flags:
 - `--host` controls the interface to bind (defaults to `0.0.0.0`).
 - `--port` selects the serving port (defaults to `7860`).
 
-Open `http://<host>:<port>/` to access the upload form, run LLM analyses, and generate CSV-driven heatmaps. Logs appear in the terminal and in `sessions/<session_id>/logs/` once sessions are created.
+Open `http://<host>:<port>/` to access the upload form, run LLM analyses, and generate CSV-driven heatmaps. The Analyze form now includes a preset selector that remembers common endpoint/token/model combinations (see `sessions/endpoint_presets.json`), so you can toggle between the default Hugging Face endpoint and a local LM Studio server without retyping credentials. Logs appear in the terminal and in `sessions/<session_id>/logs/` once sessions are created.
+
+## Docker usage
+
+The project ships with a containerized runtime. Build the image from the repository root:
+
+```
+docker build -t volleysense .
+```
+
+Run it with your preferred port mapping (mount the `sessions/` directory if you want to persist artifacts on the host):
+
+```
+docker run --rm -p 8000:8000 -v "$(pwd)/sessions:/app/sessions" volleysense
+```
+
+On startup the container logs a hardware summary, the active dependency profile, and the URL for the GUI (`http://localhost:8000/`). Detailed runtime logs live under `logs/container.log`, while crash diagnostics are mirrored to `logs/container-crash.log` if the server exits unexpectedly.
 
 ## Typical Workflow
 

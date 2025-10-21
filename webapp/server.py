@@ -7,10 +7,11 @@ from pathlib import Path
 from typing import List, Tuple
 
 from fastapi import FastAPI
-from fastapi import File, Form, Request, UploadFile
+from fastapi import File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel, Field
 
 from core.analysis import (
     b64_image_data_uri,
@@ -20,11 +21,22 @@ from core.analysis import (
 )
 from viz.heatmap import render_heatmap_sexy
 
+from webapp.presets import EndpointPreset, load_presets, upsert_preset
+
 
 SESSION_DIR = os.environ.get(
     "VOLLEYSENSE_SESSIONS", os.path.join(os.getcwd(), "sessions")
 )
 os.makedirs(SESSION_DIR, exist_ok=True)
+PRESETS_PATH = Path(SESSION_DIR) / "endpoint_presets.json"
+load_presets(PRESETS_PATH)
+
+
+class PresetPayload(BaseModel):
+    name: str = Field(..., min_length=1, max_length=120)
+    endpoint: str = Field(..., min_length=1)
+    token: str = Field(default="")
+    model: str = Field(..., min_length=1)
 
 app = FastAPI(title="VolleySense")
 app.mount("/static", StaticFiles(directory="webapp/static"), name="static")
@@ -39,7 +51,9 @@ def _coerce_bool(value: str | bool) -> bool:
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request) -> HTMLResponse:
-    return templates.TemplateResponse("index.html", {"request": request})
+    presets = [preset.to_dict() for preset in load_presets(PRESETS_PATH)]
+    context = {"request": request, "presets": presets}
+    return templates.TemplateResponse("index.html", context)
 
 
 @app.get("/_partial/heatmap", response_class=HTMLResponse)
@@ -220,3 +234,32 @@ def run(host: str = "0.0.0.0", port: int = 7860) -> None:
     import uvicorn
 
     uvicorn.run("webapp.server:app", host=host, port=port, reload=False)
+@app.get("/_api/presets")
+async def list_presets() -> dict:
+    presets = [preset.to_dict() for preset in load_presets(PRESETS_PATH)]
+    return {"presets": presets}
+
+
+@app.post("/_api/presets")
+async def create_preset(preset: PresetPayload) -> dict:
+    name = preset.name.strip()
+    endpoint = preset.endpoint.strip()
+    model = preset.model.strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="Preset name cannot be empty")
+    if not endpoint:
+        raise HTTPException(status_code=422, detail="Endpoint cannot be empty")
+    if not model:
+        raise HTTPException(status_code=422, detail="Model cannot be empty")
+
+    saved = upsert_preset(
+        PRESETS_PATH,
+        EndpointPreset(
+            name=name,
+            endpoint=endpoint,
+            token=preset.token,
+            model=model,
+        ),
+    )
+    return {"preset": saved.to_dict()}
+

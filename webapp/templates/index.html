@@ -14,23 +14,45 @@
             hx-on::after-request="if(event.detail.successful){showToast('Analysis complete', 'success');}" 
             onsubmit="showToast('Analyzing...', 'info')">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="form-control md:col-span-2">
+            <label class="label"><span class="label-text">Saved endpoints</span></label>
+            <div class="join w-full">
+              <select id="endpoint-preset"
+                      class="select select-bordered join-item w-full"
+                      data-initial="{{ presets[0]['name'] if presets else '' }}">
+                <option value="">Custom configuration…</option>
+                {% for preset in presets %}
+                <option value="{{ preset['name'] }}"
+                        data-endpoint="{{ preset['endpoint'] }}"
+                        data-token="{{ preset['token'] }}"
+                        data-model="{{ preset['model'] }}">{{ preset['name'] }}</option>
+                {% endfor %}
+              </select>
+              <button type="button" id="save-preset"
+                      class="btn btn-outline join-item">Save preset</button>
+            </div>
+            <label class="label"><span class="label-text-alt">Presets persist under sessions/endpoint_presets.json</span></label>
+          </div>
           <div class="form-control">
             <label class="label"><span class="label-text">Video</span></label>
             <input id="video-input" type="file" name="video" class="file-input file-input-bordered w-full" required />
             <label id="video-meta" class="label hidden"><span class="label-text-alt"></span></label>
           </div>
           <div class="form-control">
-            <label class="label"><span class="label-text">HF Endpoint</span></label>
-            <input name="endpoint" class="input input-bordered w-full"
-                   value="https://xw3xbts6l8qsa6x9.us-east-2.aws.endpoints.huggingface.cloud" required />
+            <label class="label"><span class="label-text">Endpoint</span></label>
+            <input id="endpoint-input" name="endpoint" class="input input-bordered w-full"
+                   value="{{ presets[0]['endpoint'] if presets else 'https://xw3xbts6l8qsa6x9.us-east-2.aws.endpoints.huggingface.cloud' }}"
+                   required />
           </div>
           <div class="form-control">
             <label class="label"><span class="label-text">Token</span></label>
-            <input type="password" name="token" class="input input-bordered w-full" />
+            <input id="token-input" type="password" name="token" class="input input-bordered w-full"
+                   value="{{ presets[0]['token'] if presets else '' }}" />
           </div>
           <div class="form-control">
             <label class="label"><span class="label-text">Model</span></label>
-            <input name="model" class="input input-bordered w-full" value="Qwen/Qwen2.5-VL-32B-Instruct" />
+            <input id="model-input" name="model" class="input input-bordered w-full"
+                   value="{{ presets[0]['model'] if presets else 'Qwen/Qwen2.5-VL-32B-Instruct' }}" />
           </div>
         </div>
 
@@ -81,6 +103,7 @@
   </section>
 </div>
 
+<script id="preset-data" type="application/json">{{ presets | tojson }}</script>
 <script>
   const videoInput = document.getElementById('video-input');
   const metaLabel = document.getElementById('video-meta');
@@ -95,6 +118,160 @@
       const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
       metaLabel.classList.remove('hidden');
       metaLabel.querySelector('.label-text-alt').textContent = `${file.name} · ${sizeMB} MB`;
+    });
+  }
+
+  const presetDataEl = document.getElementById('preset-data');
+  let presetState = [];
+  if (presetDataEl) {
+    try {
+      presetState = JSON.parse(presetDataEl.textContent || '[]');
+    } catch (err) {
+      console.warn('Unable to parse preset data', err);
+      presetState = [];
+    }
+  }
+
+  const presetSelect = document.getElementById('endpoint-preset');
+  const endpointInput = document.getElementById('endpoint-input');
+  const tokenInput = document.getElementById('token-input');
+  const modelInput = document.getElementById('model-input');
+  const savePresetButton = document.getElementById('save-preset');
+
+  function renderPresetOptions(selectedName = '') {
+    if (!presetSelect) {
+      return;
+    }
+    const customOption = document.createElement('option');
+    customOption.value = '';
+    customOption.textContent = 'Custom configuration…';
+
+    const fragment = document.createDocumentFragment();
+    fragment.appendChild(customOption);
+
+    const sorted = [...presetState].sort((a, b) => a.name.localeCompare(b.name));
+    for (const preset of sorted) {
+      const opt = document.createElement('option');
+      opt.value = preset.name;
+      opt.textContent = preset.name;
+      opt.dataset.endpoint = preset.endpoint || '';
+      opt.dataset.token = preset.token || '';
+      opt.dataset.model = preset.model || '';
+      if (preset.name === selectedName) {
+        opt.selected = true;
+      }
+      fragment.appendChild(opt);
+    }
+
+    presetSelect.replaceChildren(fragment);
+    if (!selectedName) {
+      presetSelect.value = '';
+    }
+  }
+
+  function applyPresetFromOption(option) {
+    if (!option) {
+      return;
+    }
+    if (endpointInput) {
+      endpointInput.value = option.dataset.endpoint || '';
+    }
+    if (tokenInput) {
+      tokenInput.value = option.dataset.token || '';
+    }
+    if (modelInput) {
+      modelInput.value = option.dataset.model || '';
+    }
+  }
+
+  function trackCustomEdits() {
+    if (presetSelect && presetSelect.value) {
+      presetSelect.value = '';
+    }
+  }
+
+  if (endpointInput) {
+    endpointInput.addEventListener('input', trackCustomEdits);
+  }
+  if (tokenInput) {
+    tokenInput.addEventListener('input', trackCustomEdits);
+  }
+  if (modelInput) {
+    modelInput.addEventListener('input', trackCustomEdits);
+  }
+
+  if (presetSelect) {
+    const initialName = presetSelect.dataset.initial || '';
+    renderPresetOptions(initialName);
+    if (initialName) {
+      const option = Array.from(presetSelect.options).find(opt => opt.value === initialName);
+      if (option) {
+        applyPresetFromOption(option);
+      }
+    }
+
+    presetSelect.addEventListener('change', () => {
+      const option = presetSelect.selectedOptions[0];
+      if (option && option.value) {
+        applyPresetFromOption(option);
+      }
+    });
+  }
+
+  async function persistPreset(name, endpoint, token, model) {
+    const payload = { name, endpoint, token, model };
+    const response = await fetch('/_api/presets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      let message = await response.text();
+      try {
+        const parsed = JSON.parse(message);
+        if (parsed && typeof parsed.detail === 'string') {
+          message = parsed.detail;
+        }
+      } catch (err) {
+        // leave message as-is when parsing fails
+      }
+      throw new Error(message || 'Failed to save preset');
+    }
+    const data = await response.json();
+    return data.preset;
+  }
+
+  if (savePresetButton) {
+    savePresetButton.addEventListener('click', async () => {
+      const name = window.prompt('Preset name', presetSelect && presetSelect.value ? presetSelect.value : '');
+      if (!name) {
+        return;
+      }
+      try {
+        const preset = await persistPreset(
+          name.trim(),
+          endpointInput ? endpointInput.value : '',
+          tokenInput ? tokenInput.value : '',
+          modelInput ? modelInput.value : ''
+        );
+        const existingIndex = presetState.findIndex((p) => p.name === preset.name);
+        if (existingIndex >= 0) {
+          presetState[existingIndex] = preset;
+        } else {
+          presetState.push(preset);
+        }
+        renderPresetOptions(preset.name);
+        if (presetSelect) {
+          const option = Array.from(presetSelect.options).find((opt) => opt.value === preset.name);
+          if (option) {
+            applyPresetFromOption(option);
+          }
+        }
+        showToast('Preset saved', 'success');
+      } catch (err) {
+        console.error(err);
+        showToast(err.message || 'Failed to save preset', 'error');
+      }
     });
   }
 </script>
