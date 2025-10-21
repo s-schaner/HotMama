@@ -8,6 +8,8 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- HTMX -->
   <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <!-- Alpine.js -->
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
   <style>
     .hx-indicator { display: none; }
     .htmx-request .hx-indicator { display: inline-block; }
@@ -29,6 +31,7 @@
         <li><a href="/" class="active">Analyze</a></li>
         <li><a href="/#heatmap" hx-get="/_partial/heatmap" hx-target="#content" hx-swap="innerHTML">Heatmap</a></li>
         <li><a href="/#sessions" hx-get="/_partial/sessions" hx-target="#content" hx-swap="innerHTML">Sessions</a></li>
+        <li><a href="/#analytics" hx-get="/_partial/analytics" hx-target="#content" hx-swap="innerHTML">Analytics Dashboard</a></li>
       </ul>
     </aside>
 
