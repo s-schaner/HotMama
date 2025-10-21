@@ -35,7 +35,8 @@ SESSION_DIR = os.environ.get(
     "VOLLEYSENSE_SESSIONS", os.path.join(os.getcwd(), "sessions")
 )
 os.makedirs(SESSION_DIR, exist_ok=True)
-PRESETS_PATH = Path(SESSION_DIR) / "endpoint_presets.json"
+SESSION_PATH = Path(SESSION_DIR).resolve()
+PRESETS_PATH = SESSION_PATH / "endpoint_presets.json"
 load_presets(PRESETS_PATH)
 
 
@@ -59,10 +60,9 @@ def _public_url(path: Path | None) -> str | None:
     if not path:
         return None
     try:
-        abs_root = Path(os.getcwd()).resolve()
         resolved = Path(path).resolve()
-        rel = resolved.as_posix().replace(abs_root.as_posix(), "")
-        return f"/static/..{rel}"
+        rel_path = resolved.relative_to(SESSION_PATH)
+        return f"/assets/{rel_path.as_posix()}"
     except Exception:
         return None
 
@@ -75,6 +75,7 @@ class PresetPayload(BaseModel):
 
 app = FastAPI(title="VolleySense")
 app.mount("/static", StaticFiles(directory="webapp/static"), name="static")
+app.mount("/assets", StaticFiles(directory=SESSION_PATH), name="assets")
 templates = Jinja2Templates(directory="webapp/templates")
 
 
@@ -205,11 +206,13 @@ async def analyze_htmx(
                 out_dir = os.path.join(SESSION_DIR, "heatmaps")
                 os.makedirs(out_dir, exist_ok=True)
                 base_name = os.path.splitext(os.path.basename(video.filename))[0]
-                heatmap_img_path = render_heatmap(
-                    valid_pts,
-                    os.path.join(
-                        out_dir, f"hm_{base_name}.png"
-                    ),
+                heatmap_img_path = Path(
+                    render_heatmap(
+                        valid_pts,
+                        os.path.join(
+                            out_dir, f"hm_{base_name}.png"
+                        ),
+                    )
                 )
                 csv_path = Path(out_dir) / f"hm_{base_name}.csv"
                 with csv_path.open("w", newline="", encoding="utf-8") as fh:
@@ -228,11 +231,12 @@ async def analyze_htmx(
         }
         html = templates.get_template("_result_panel.html").render(context)
         if heatmap_img_path:
-            html += (
-                "<div class=\"divider\">Heatmap</div>"
-                f"<img src=\"/static/..{heatmap_img_path.replace(os.getcwd(), '')}\" "
-                "class=\"rounded border border-base-300\">"
-            )
+            img_url = _public_url(heatmap_img_path)
+            if img_url:
+                html += (
+                    "<div class=\"divider\">Heatmap</div>"
+                    f"<img src=\"{img_url}\" class=\"rounded border border-base-300\">"
+                )
             if heatmap_csv_path:
                 csv_url = _public_url(heatmap_csv_path)
                 if csv_url:
