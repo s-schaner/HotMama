@@ -162,11 +162,16 @@ CORE_PACKAGES_PINNED = [
     "jinja2==3.1.4",
     "python-multipart==0.0.9",
     "requests==2.31.0",
+    "httpx==0.27.0",
+    "tenacity==8.2.3",
     "pillow==10.3.0",
     "numpy==1.26.4",
-    "pydantic==1.10.15",
+    "pydantic==2.6.3",
+    "pydantic-settings==2.2.1",
     "ultralytics==8.2.55",
     "matplotlib==3.8.4",
+    "python-dotenv==1.0.1",
+    "slowapi==0.1.9",
 ]
 
 OPENCV_PINNED = [
