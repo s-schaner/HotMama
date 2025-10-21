@@ -3,7 +3,7 @@ from __future__ import annotations
 import struct
 import zlib
 from pathlib import Path
-from typing import Iterable, Literal, Tuple
+from typing import Callable, Iterable, Literal, Tuple
 
 try:  # pragma: no cover - optional heavy dependencies
     import numpy as np
@@ -24,6 +24,7 @@ try:
 
     _HAS_CV2 = True
 except Exception:  # pragma: no cover - OpenCV is optional at runtime
+    cv2 = None  # type: ignore[assignment]
     _HAS_CV2 = False
 
 COURT_WIDTH = 9
@@ -34,6 +35,15 @@ COURT_W = float(COURT_WIDTH)
 COURT_L = float(COURT_LENGTH)
 
 _HAS_SEXY_DEPS = all(obj is not None for obj in (np, matplotlib, plt, LinearSegmentedColormap))
+
+HeatmapRenderer = Callable[[Iterable[Tuple[float, float, float]], Path], Path]
+
+
+def _canvas_to_bgr(canvas: list[list[Tuple[int, int, int]]]):
+    if np is None or not _HAS_CV2:
+        raise RuntimeError("OpenCV + NumPy required for canvas conversion")
+    arr = np.array(canvas, dtype=np.uint8)
+    return cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
 
 
 def draw_court_background(width: int, height: int) -> list[list[Tuple[int, int, int]]]:
@@ -110,6 +120,51 @@ def render_heatmap(points: Iterable[Tuple[float, float, float]], output_path: Pa
         _draw_circle(canvas, cx, cy, radius=8, color=color)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     _write_png(canvas, output_path)
+    return output_path
+
+
+def render_heatmap_cv(
+    points: Iterable[Tuple[float, float, float]],
+    output_path: Path,
+    colormap: str = "turbo",
+    opacity: float = 0.68,
+    blur_radius: float = 1.0,
+    trail: bool = True,
+) -> Path:
+    if not _HAS_CV2 or np is None:
+        raise RuntimeError("OpenCV + NumPy are required for render_heatmap_cv")
+
+    pts = np.array(list(points), dtype=float)
+    if len(pts) == 0:
+        raise ValueError("No points for cv heatmap")
+
+    grid, _, sigma_base = _rasterize_points(pts[:, :2], res=140)
+    sigma = max(1.0, float(sigma_base) * float(blur_radius))
+    dens = _blur(grid, sigma)
+    dens = _normalize(dens)
+
+    court_canvas = draw_court_background(COURT_WIDTH * CANVAS_SCALE, COURT_LENGTH * CANVAS_SCALE)
+    bg = _canvas_to_bgr(court_canvas)
+
+    dens_uint8 = np.clip(dens * 255.0, 0, 255).astype(np.uint8)
+    cmap_name = str(colormap).upper()
+    cv_cmap = getattr(cv2, f"COLORMAP_{cmap_name}", cv2.COLORMAP_TURBO)
+    heat = cv2.applyColorMap(dens_uint8, cv_cmap)
+    heat = cv2.resize(heat, (bg.shape[1], bg.shape[0]), interpolation=cv2.INTER_LINEAR)
+    combined = cv2.addWeighted(heat, float(opacity), bg, 1 - float(opacity), 0)
+
+    if trail:
+        heights = pts[:, 2]
+        h_norm = _normalize(heights.reshape(-1, 1)).ravel() if np.max(heights) > 0 else np.zeros(len(pts))
+        for (x, y, _), hn in zip(pts, h_norm):
+            cx = int(x * CANVAS_SCALE)
+            cy = int(y * CANVAS_SCALE)
+            color = tuple(int(c) for c in cv2.applyColorMap(np.array([[int(hn * 255)]], dtype=np.uint8), cv_cmap)[0, 0][::-1])
+            cv2.circle(combined, (cx, cy), 6, color, thickness=-1, lineType=cv2.LINE_AA)
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    if not cv2.imwrite(str(output_path), combined):
+        raise RuntimeError(f"Failed to write heatmap to {output_path}")
     return output_path
 
 
@@ -301,3 +356,28 @@ def render_heatmap_sexy(
     fig.savefig(output_path, bbox_inches="tight")
     plt.close(fig)
     return output_path
+
+
+def available_renderers() -> dict[str, HeatmapRenderer]:
+    renderers: dict[str, HeatmapRenderer] = {"basic": render_heatmap}
+    if _HAS_CV2 and np is not None:
+        renderers["opencv"] = lambda pts, out: render_heatmap_cv(pts, out)
+    if _HAS_SEXY_DEPS:
+        renderers["matplotlib"] = lambda pts, out: render_heatmap_sexy(pts, out)
+    return renderers
+
+
+def render_with_strategy(
+    strategy: str,
+    points: Iterable[Tuple[float, float, float]],
+    output_path: Path,
+    **kwargs,
+) -> Path:
+    strategy = strategy.lower().strip()
+    if strategy == "basic":
+        return render_heatmap(points, output_path)
+    if strategy == "opencv":
+        return render_heatmap_cv(points, output_path, **kwargs)
+    if strategy in {"matplotlib", "sexy"}:
+        return render_heatmap_sexy(points, output_path, **kwargs)
+    raise ValueError(f"Unknown heatmap renderer: {strategy}")

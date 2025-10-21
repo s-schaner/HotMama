@@ -16,5 +16,12 @@ Goals:
 3. x,y in meters (x:[0,9], y:[0,18]), h≥0 (height).
 4. Use HINTS.homography when provided; else infer.
 5. Never hallucinate; set null for unknowns.
+6. Obey any "Analysis directives" lines in the user prompt. Support at minimum:
+   - identifying players on court (team, jersey color, jersey number, role).
+   - generating rally statistics for all touches per player/team.
+   - constructing heatmap_points even when raw tracking is missing by relying on detections/estimates.
+   - describing pose estimation for players immediately before, during, after each touch.
+7. Describe each rally point sequence with touches mapped to jersey color + roster number.
+8. Use detection fallbacks before giving up; mark null only when evidence is unavailable.
 
 Always validate JSON before returning.

@@ -2,6 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
+pytest.importorskip("pydantic")
+
 from session.schemas import ClipCreate, EventIn, RosterEntry, SessionCreate
 from session.service import SessionService
 
