@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import pytest
 
+pytest.importorskip("pydantic")
+
 from llm.parsers import RallySchema, parse_rally
 
 

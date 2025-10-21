@@ -2,6 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
+pytest.importorskip("pydantic")
+
 from app.registry import discover_plugins
 from plugins.plugins_api import AppContext
 

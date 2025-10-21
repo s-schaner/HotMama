@@ -58,9 +58,21 @@
 
         <div class="form-control mt-2">
           <label class="label"><span class="label-text">Prompt</span></label>
-          <textarea name="prompt" rows="3" class="textarea textarea-bordered">Describe rally; output STRICT JSON with:
-{"rally_state": "...", "who_won": "teamA|teamB|null", "reason":"...", "timeline":[{"t": 12.3, "event":"attack", "actor":"teamA#12"}]}
+          <textarea name="prompt" rows="3" class="textarea textarea-bordered">describe the visualized plays, describe each point, the sequence of events in the point, the touches in the point, broken down by who (color and roster number) on each team did what.
           </textarea>
+        </div>
+
+        <div class="form-control mt-2">
+          <label class="label"><span class="label-text">Analysis tools</span></label>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+            {% for key, description in toolkit_prompts.items() %}
+            <label class="label cursor-pointer justify-start gap-2 border border-base-300 rounded px-3 py-2">
+              <input type="checkbox" class="checkbox checkbox-sm" name="tools" value="{{ key }}" />
+              <span class="label-text text-sm">{{ description }}</span>
+            </label>
+            {% endfor %}
+          </div>
+          <label class="label"><span class="label-text-alt">Checked tools append structured directives to the LLM request.</span></label>
         </div>
 
         <div class="grid grid-cols-2 md:grid-cols-6 gap-2 mt-2">
