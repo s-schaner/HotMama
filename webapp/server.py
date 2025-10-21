@@ -3,42 +3,53 @@ from __future__ import annotations
 import contextlib
 import csv
 import json
+import logging
 import os
+import shutil
 import uuid
 from pathlib import Path
 from typing import List, Tuple
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi import File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
+from app.error_handlers import install_error_handlers
+from app.settings import Settings, get_settings
+from app.validators import create_secure_temp_file, validate_video_upload
 from core.analysis import (
     b64_image_data_uri,
     call_endpoint_openai_chat,
     extract_frames,
     render_heatmap,
 )
+from llm.async_client import AsyncLLMClient
 from viz.heatmap import available_renderers, render_heatmap_sexy
 from viz.trajectory import (
     TrajectoryError,
     list_detection_methods,
     run_heatmap_pipeline,
 )
-
 from webapp.presets import EndpointPreset, load_presets, upsert_preset
 
+logger = logging.getLogger(__name__)
 
-SESSION_DIR = os.environ.get(
-    "VOLLEYSENSE_SESSIONS", os.path.join(os.getcwd(), "sessions")
-)
-os.makedirs(SESSION_DIR, exist_ok=True)
-SESSION_PATH = Path(SESSION_DIR).resolve()
+
+# Initialize settings
+settings = get_settings()
+SESSION_PATH = settings.sessions_dir
 PRESETS_PATH = SESSION_PATH / "endpoint_presets.json"
 load_presets(PRESETS_PATH)
 
+# Initialize rate limiter
+limiter = Limiter(key_func=get_remote_address)
 
 TOOLKIT_PROMPTS: dict[str, str] = {
     "identify_players": (
@@ -73,7 +84,37 @@ class PresetPayload(BaseModel):
     token: str = Field(default="")
     model: str = Field(..., min_length=1)
 
-app = FastAPI(title="VolleySense")
+
+# Create FastAPI app with enhanced configuration
+app = FastAPI(
+    title="VolleySense",
+    description="Volleyball analytics with AI-powered video analysis",
+    version="1.0.0",
+    docs_url="/docs" if settings.debug else None,
+    redoc_url="/redoc" if settings.debug else None,
+)
+
+# Store settings in app state
+app.state.settings = settings
+app.state.limiter = limiter
+
+# Install error handlers
+install_error_handlers(app)
+
+# Add rate limiting
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Configure CORS if enabled
+if settings.enable_cors:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+# Mount static files
 app.mount("/static", StaticFiles(directory="webapp/static"), name="static")
 app.mount("/assets", StaticFiles(directory=SESSION_PATH), name="assets")
 templates = Jinja2Templates(directory="webapp/templates")
@@ -83,6 +124,20 @@ def _coerce_bool(value: str | bool) -> bool:
     if isinstance(value, bool):
         return value
     return str(value).lower() in {"1", "true", "on", "yes"}
+
+
+@app.get("/health")
+async def health_check() -> JSONResponse:
+    """Health check endpoint for monitoring and container orchestration."""
+    return JSONResponse({
+        "status": "healthy",
+        "version": "1.0.0",
+        "settings": {
+            "sessions_dir": str(settings.sessions_dir),
+            "max_file_size_mb": settings.max_file_size_mb,
+            "rate_limiting_enabled": settings.enable_rate_limiting,
+        },
+    })
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -114,6 +169,7 @@ async def partial_sessions(request: Request) -> HTMLResponse:
 
 
 @app.post("/_api/analyze", response_class=HTMLResponse)
+@limiter.limit(f"{settings.rate_limit_per_minute}/minute")
 async def analyze_htmx(
     request: Request,
     video: UploadFile = File(...),
@@ -130,15 +186,34 @@ async def analyze_htmx(
     temperature: float = Form(0.2),
     jpeg_quality: int = Form(85),
     tools: List[str] = Form([]),
+    current_settings: Settings = Depends(get_settings),
 ):
-    data = await video.read()
-    tmp_path = os.path.join(SESSION_DIR, f"upload_{video.filename}")
-    with open(tmp_path, "wb") as fh:
-        fh.write(data)
+    """
+    Analyze volleyball video using vision-language model.
+
+    Validates upload, extracts frames, calls LLM API, generates heatmap.
+    """
+    logger.info(
+        "Analysis request received",
+        extra={
+            "filename": video.filename,
+            "model": model,
+            "fps": fps,
+        },
+    )
+
+    # Validate and read video file
+    content = await validate_video_upload(video, current_settings)
+
+    # Create secure temp file
+    file_ext = Path(video.filename or "video.mp4").suffix
+    tmp_path = create_secure_temp_file(content, file_ext, SESSION_PATH / "temp")
 
     try:
-        frames, meta = extract_frames(tmp_path, float(fps), int(max_frames))
-        system_prompt = open("prompts/qwen_volley_system.txt").read()
+        frames, meta = extract_frames(str(tmp_path), float(fps), int(max_frames))
+        logger.info(f"Extracted {len(frames)} frames from video")
+
+        system_prompt = Path("prompts/qwen_volley_system.txt").read_text()
         directives = []
         for tool in tools or []:
             text = TOOLKIT_PROMPTS.get(tool)
@@ -147,6 +222,7 @@ async def analyze_htmx(
         if directives:
             tool_text = "\n".join(f"- {line}" for line in directives)
             prompt = prompt.rstrip() + "\n\nAnalysis directives:\n" + tool_text
+
         images = [b64_image_data_uri(frame, q=int(jpeg_quality)) for frame in frames]
         messages = [
             {"role": "system", "content": [{"type": "text", "text": system_prompt}]},
@@ -160,13 +236,16 @@ async def analyze_htmx(
             },
         ]
 
-        response = call_endpoint_openai_chat(
-            endpoint,
-            token or None,
-            model,
+        # Use async LLM client
+        llm_client = AsyncLLMClient(
+            endpoint=endpoint,
+            model=model,
+            api_key=token or None,
+            timeout=current_settings.llm_timeout_seconds,
+        )
+
+        response = await llm_client.chat(
             messages,
-            fps=fps,
-            max_px=max_pixels,
             max_tokens=max_tokens,
             temperature=temperature,
         )
@@ -246,15 +325,15 @@ async def analyze_htmx(
                     )
         return HTMLResponse(html)
     except Exception as exc:
+        logger.exception("Video analysis failed", exc_info=exc)
         return HTMLResponse(
             f"<div class='alert alert-error'><span>Error: {exc}</span></div>",
             status_code=500,
         )
     finally:
-        try:
-            os.remove(tmp_path)
-        except OSError:
-            pass
+        # Clean up temp file
+        with contextlib.suppress(OSError):
+            tmp_path.unlink(missing_ok=True)
 
 
 @app.post("/_api/heatmap_pipeline", response_class=HTMLResponse)

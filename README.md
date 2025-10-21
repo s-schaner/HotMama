@@ -42,6 +42,38 @@ When running inside WSL, ensure that:
 
 The installer surfaces the detected Python executable and platform in the log header so you can confirm WSL-specific paths.
 
+## Configuration
+
+VolleySense supports environment-based configuration for easy customization and deployment.
+
+### Environment Variables
+
+Copy `.env.example` to `.env` and customize settings:
+
+```bash
+cp .env.example .env
+```
+
+Key configuration options:
+
+- **Server**: `VOLLEYSENSE_HOST`, `VOLLEYSENSE_PORT`, `VOLLEYSENSE_DEBUG`
+- **Upload Limits**: `VOLLEYSENSE_MAX_FILE_SIZE_MB` (default: 500MB)
+- **Rate Limiting**: `VOLLEYSENSE_RATE_LIMIT_PER_MINUTE` (default: 10 requests/min)
+- **LLM Timeout**: `VOLLEYSENSE_LLM_TIMEOUT_SECONDS` (default: 120s)
+- **CORS**: Set `VOLLEYSENSE_ENABLE_CORS=true` for cross-origin requests
+
+See `.env.example` for all available options.
+
+## Security Features
+
+VolleySense includes enterprise-ready security features:
+
+- **Input Validation**: File type and size validation for uploads
+- **Rate Limiting**: API rate limiting to prevent abuse (configurable per-IP)
+- **Secure File Handling**: Cryptographically secure temporary file names
+- **Structured Error Handling**: Consistent error responses with appropriate HTTP status codes
+- **CORS Support**: Optional CORS configuration for web integrations
+
 ## Launching the App
 
 Start the FastAPI interface from the project root:
@@ -89,19 +121,62 @@ On startup the container logs a hardware summary, the active dependency profile,
 - Ensure SQLite writes are permitted; the app stores state under `sessions/`.
 - For GPU issues, verify CUDA availability via `python -c "import torch; print(torch.cuda.is_available())"`.
 
-## Tests
+## API Endpoints
+
+### Core Endpoints
+
+- `GET /` - Main web interface
+- `GET /health` - Health check endpoint (returns JSON status)
+- `GET /docs` - OpenAPI documentation (when debug mode enabled)
+- `POST /_api/analyze` - Video analysis endpoint
+- `POST /_api/heatmap_pipeline` - Ball trajectory detection and heatmap generation
+
+### Health Check
+
+The `/health` endpoint provides application status for monitoring and container orchestration:
+
+```bash
+curl http://localhost:7860/health
+```
+
+Returns:
+```json
+{
+  "status": "healthy",
+  "version": "1.0.0",
+  "settings": {
+    "sessions_dir": "/app/sessions",
+    "max_file_size_mb": 500,
+    "rate_limiting_enabled": true
+  }
+}
+```
+
+## Development
+
+### Running Tests
 
 Execute the full test suite before submitting changes:
 
-```
+```bash
 pytest -q
+```
+
+Run tests with coverage:
+
+```bash
+pytest --cov=. --cov-report=html
 ```
 
 The suite exercises session lifecycles, plugin isolation, LLM parsing, tracking fusion, and the heatmap renderer.
-Adjust the `--host` / `--port` flags when deploying the FastAPI server behind a proxy or container orchestrator.
 
-## Tests
+### CI/CD
 
-```
-pytest -q
-```
+The project includes a GitHub Actions CI pipeline (`.github/workflows/ci.yml`) that runs:
+
+- **Linting**: ruff, black, mypy
+- **Testing**: pytest across Python 3.10 and 3.11
+- **Docker**: Build verification
+- **Security**: bandit security scanning
+
+The pipeline runs on all pushes to `main`, `develop`, and `claude/**` branches.
