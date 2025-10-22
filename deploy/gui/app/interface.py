@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import json
 from html import escape
+
+from deploy.api.app.schemas import JobSpec
 
 from .controller import GuiController
 
@@ -252,6 +255,17 @@ FEATURE_GRID_HTML = """
 </div>
 """
 
+JOB_SCHEMA_JSON = json.dumps(JobSpec.model_json_schema(), indent=2, sort_keys=True)
+DEFAULT_INPUT_MODE = "json"
+
+HELP_GUIDE_MARKDOWN = """
+**Job manifest guidance**
+
+- Use **Structured JSON** mode to paste an entire job manifest or simple option overrides.
+- Use **Natural language** mode to describe the run. The assistant converts the request to the manifest shown below.
+- The overlay selections above are merged into the manifest automatically before queueing.
+""".strip()
+
 
 def create_interface(controller: GuiController):
     """Construct and return the Gradio Blocks layout."""
@@ -275,6 +289,11 @@ def create_interface(controller: GuiController):
             return gr.update(value=None)
         return str(path)
 
+    def _manifest_update(manifest: dict | None):
+        if not manifest:
+            return gr.update(value={}, visible=False)
+        return gr.update(value=manifest, visible=True)
+
     def _handle_submit(
         upload_path: str | None,
         params_text: str,
@@ -282,15 +301,22 @@ def create_interface(controller: GuiController):
         overlay_values: list[str] | None,
         current_job_id: str,
         current_monitor: str,
+        input_mode_value: str,
+        prompt_text: str,
+        enrich_value: bool,
     ):
-        job_id, message = controller.submit_job(
+        job_id, message, manifest = controller.submit_job(
             upload_path,
             params_text,
             job_type=profile_value,
             overlay_modes=overlay_values or [],
+            input_mode=input_mode_value,
+            prompt_text=prompt_text,
+            enrich_manifest=enrich_value,
         )
         banner = _render_alert(message)
         source_preview = _video_value(upload_path)
+        manifest_preview = _manifest_update(manifest)
         if not job_id:
             return (
                 gr.update(value=current_job_id),
@@ -302,6 +328,7 @@ def create_interface(controller: GuiController):
                 gr.update(value=None),
                 source_preview,
                 current_job_id,
+                manifest_preview,
             )
         return (
             job_id,
@@ -313,6 +340,7 @@ def create_interface(controller: GuiController):
             gr.update(value=None),
             source_preview,
             job_id,
+            manifest_preview,
         )
 
     def _handle_refresh(job_id_text: str, current_active: str):
@@ -340,6 +368,47 @@ def create_interface(controller: GuiController):
 
     def _handle_source_preview(upload_path: str | None):
         return _video_value(upload_path)
+
+    def _handle_mode_change(mode: str):
+        is_nl = mode == "nl"
+        return (
+            gr.update(visible=not is_nl),
+            gr.update(visible=is_nl),
+            gr.update(visible=is_nl),
+        )
+
+    def _toggle_help(is_open: bool):
+        if is_open:
+            return (
+                gr.update(visible=False),
+                gr.update(visible=False),
+                False,
+                gr.update(value="Show schema"),
+            )
+        return (
+            gr.update(value=HELP_GUIDE_MARKDOWN, visible=True),
+            gr.update(value=JOB_SCHEMA_JSON, visible=True),
+            True,
+            gr.update(value="Hide schema"),
+        )
+
+    def _handle_clear():
+        return (
+            gr.update(value=None),
+            gr.update(value="{}", visible=True),
+            "",
+            gr.update(value=None),
+            "pipeline.analysis",
+            ["overlay.activity_heatmap"],
+            gr.update(value={}, visible=False),
+            DEFAULT_INPUT_MODE,
+            gr.update(value="", visible=False),
+            gr.update(value=False, visible=False),
+            gr.update(visible=False),
+            gr.update(visible=False),
+            False,
+            gr.update(value="Show schema"),
+        )
 
     with gr.Blocks(title="HotMama Vision Console", css=CUSTOM_CSS) as demo:
         gr.HTML(HERO_HTML)
@@ -391,10 +460,45 @@ def create_interface(controller: GuiController):
                     value=["overlay.activity_heatmap"],
                     info="Combine overlays to tailor the rendered diagnostic layers.",
                 )
+                mode_choices: list[tuple[str, str]] = [("Structured JSON", "json")]
+                if controller.supports_natural_language:
+                    mode_choices.append(("Natural language", "nl"))
+                input_mode = gr.Radio(
+                    label="Submission mode",
+                    choices=mode_choices,
+                    value=DEFAULT_INPUT_MODE,
+                )
                 params = gr.Code(
                     label="Parameters (JSON)",
                     value="{}",
                     language="json",
+                    visible=True,
+                )
+                nl_prompt = gr.TextArea(
+                    label="Natural language request",
+                    placeholder="Describe the analysis you need, relevant moments, and desired overlays.",
+                    visible=False,
+                    lines=6,
+                )
+                enrich_checkbox = gr.Checkbox(
+                    label="Enrich manifest with qwen2.5-vl-7b",
+                    value=False,
+                    visible=False,
+                )
+                help_state = gr.State(False)
+                with gr.Row():
+                    help_btn = gr.Button(
+                        "Show schema",
+                        variant="secondary",
+                        icon="❓",
+                    )
+                help_text = gr.Markdown(visible=False)
+                help_schema = gr.Code(
+                    label="Job manifest schema",
+                    value="",
+                    language="json",
+                    interactive=False,
+                    visible=False,
                 )
                 with gr.Row():
                     submit_btn = gr.Button(
@@ -413,6 +517,11 @@ def create_interface(controller: GuiController):
                     placeholder="Submit a job to populate",
                 )
                 submission_feedback = gr.HTML()
+                manifest_preview = gr.JSON(
+                    label="Job manifest (preview)",
+                    value={},
+                    visible=False,
+                )
                 gr.Markdown(
                     "The upload is stored under <code>sessions/gui/uploads</code> and shared with the worker container.",
                     elem_classes=["form-footer"],
@@ -455,6 +564,18 @@ def create_interface(controller: GuiController):
                     elem_classes=["form-footer"],
                 )
 
+        input_mode.change(
+            _handle_mode_change,
+            inputs=input_mode,
+            outputs=[params, nl_prompt, enrich_checkbox],
+        )
+
+        help_btn.click(
+            _toggle_help,
+            inputs=help_state,
+            outputs=[help_text, help_schema, help_state, help_btn],
+        )
+
         upload.upload(
             _handle_source_preview,
             inputs=upload,
@@ -463,7 +584,17 @@ def create_interface(controller: GuiController):
 
         submit_btn.click(
             _handle_submit,
-            inputs=[upload, params, profile, overlays, active_job, job_id_input],
+            inputs=[
+                upload,
+                params,
+                profile,
+                overlays,
+                active_job,
+                job_id_input,
+                input_mode,
+                nl_prompt,
+                enrich_checkbox,
+            ],
             outputs=[
                 job_id_display,
                 job_id_input,
@@ -474,6 +605,7 @@ def create_interface(controller: GuiController):
                 artifact_preview,
                 source_preview,
                 active_job,
+                manifest_preview,
             ],
         )
 
@@ -491,14 +623,7 @@ def create_interface(controller: GuiController):
         )
 
         clear_btn.click(
-            lambda: (
-                gr.update(value=None),
-                "{}",
-                "",
-                gr.update(value=None),
-                "pipeline.analysis",
-                ["overlay.activity_heatmap"],
-            ),
+            _handle_clear,
             inputs=None,
             outputs=[
                 upload,
@@ -507,6 +632,14 @@ def create_interface(controller: GuiController):
                 source_preview,
                 profile,
                 overlays,
+                manifest_preview,
+                input_mode,
+                nl_prompt,
+                enrich_checkbox,
+                help_text,
+                help_schema,
+                help_state,
+                help_btn,
             ],
         )
 

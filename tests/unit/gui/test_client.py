@@ -19,9 +19,12 @@ def test_api_client_submit_status_and_download(tmp_path) -> None:
         if request.method == "POST" and request.url.path.endswith("/jobs"):
             payload = request.json()
             assert payload["payload"]["task"] == "analyze_video"
-            assert payload["payload"]["options"].get("overlays") == [
-                "heatmap"
-            ]
+            assert payload["payload"]["source_uri"] == "/tmp/video.mp4"
+            assert payload["payload"]["options"] == {
+                "threshold": 0.5,
+                "overlays": ["heatmap"],
+            }
+            assert payload["priority"] == "high"
             return httpx.Response(
                 202,
                 json={
@@ -29,7 +32,7 @@ def test_api_client_submit_status_and_download(tmp_path) -> None:
                     "status": "queued",
                     "submitted_at": submitted_at,
                     "profile": "cpu",
-                    "priority": "normal",
+                    "priority": "high",
                     "idempotency_key": "demo",
                 },
             )
@@ -60,14 +63,22 @@ def test_api_client_submit_status_and_download(tmp_path) -> None:
     transport = httpx.MockTransport(handler)
     with httpx.Client(transport=transport, base_url="http://testserver/v1") as http_client:
         client = ApiClient("http://testserver/v1", timeout=1.0, client=http_client)
+        manifest = {
+            "payload": {
+                "task": "analyze_video",
+                "options": {"threshold": 0.5},
+            },
+            "priority": "high",
+        }
         handle = client.submit_job(
             "/tmp/video.mp4",
             job_type="pipeline.analysis",
             overlays=["overlay.activity_heatmap"],
+            manifest=manifest,
         )
         assert handle.job_id == job_id
         assert handle.status == "queued"
-        assert handle.priority == "normal"
+        assert handle.priority == "high"
         assert handle.task == "analyze_video"
         assert handle.idempotency_key == "demo"
 
