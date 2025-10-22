@@ -8,7 +8,7 @@ import os
 import shutil
 import uuid
 from pathlib import Path
-from typing import Annotated, List, Tuple
+from typing import TYPE_CHECKING, Annotated, Iterator, List, Tuple
 
 from fastapi import Depends, FastAPI
 from fastapi import File, Form, HTTPException, Request, UploadFile
@@ -22,11 +22,11 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 from app.error_handlers import install_error_handlers
+from app.errors import NotFoundError
 from app.settings import Settings, get_settings
 from app.validators import create_secure_temp_file, validate_video_upload
 from core.analysis import (
     b64_image_data_uri,
-    call_endpoint_openai_chat,
     extract_frames,
     render_heatmap,
 )
@@ -40,7 +40,14 @@ from viz.trajectory import (
 from webapp.presets import EndpointPreset, load_presets, upsert_preset
 from session.api import router as session_router
 
+if TYPE_CHECKING:
+    from session.service import SessionService
+
 logger = logging.getLogger(__name__)
+
+BASE_DIR = Path(__file__).resolve().parent
+STATIC_DIR = BASE_DIR / "static"
+TEMPLATES_DIR = BASE_DIR / "templates"
 
 
 # Initialize settings
@@ -48,6 +55,18 @@ settings = get_settings()
 SESSION_PATH = settings.sessions_dir
 PRESETS_PATH = SESSION_PATH / "endpoint_presets.json"
 load_presets(PRESETS_PATH)
+
+
+@contextlib.contextmanager
+def session_service() -> Iterator["SessionService"]:
+    from session.service import SessionService
+
+    service = SessionService(settings.get_db_url(), settings.sessions_dir)
+    try:
+        yield service
+    finally:
+        service.close()
+
 
 # Initialize rate limiter
 limiter = Limiter(key_func=get_remote_address)
@@ -119,9 +138,9 @@ if settings.enable_cors:
 app.include_router(session_router)
 
 # Mount static files
-app.mount("/static", StaticFiles(directory="webapp/static"), name="static")
-app.mount("/assets", StaticFiles(directory=SESSION_PATH), name="assets")
-templates = Jinja2Templates(directory="webapp/templates")
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+app.mount("/assets", StaticFiles(directory=str(SESSION_PATH)), name="assets")
+templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 
 def _coerce_bool(value: str | bool) -> bool:
@@ -133,15 +152,17 @@ def _coerce_bool(value: str | bool) -> bool:
 @app.get("/health")
 async def health_check() -> JSONResponse:
     """Health check endpoint for monitoring and container orchestration."""
-    return JSONResponse({
-        "status": "healthy",
-        "version": "1.0.0",
-        "settings": {
-            "sessions_dir": str(settings.sessions_dir),
-            "max_file_size_mb": settings.max_file_size_mb,
-            "rate_limiting_enabled": settings.enable_rate_limiting,
-        },
-    })
+    return JSONResponse(
+        {
+            "status": "healthy",
+            "version": "1.0.0",
+            "settings": {
+                "sessions_dir": str(settings.sessions_dir),
+                "max_file_size_mb": settings.max_file_size_mb,
+                "rate_limiting_enabled": settings.enable_rate_limiting,
+            },
+        }
+    )
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -173,12 +194,8 @@ async def partial_sessions(
     settings: Settings = Depends(get_settings),
 ) -> HTMLResponse:
     """Render the session management dashboard panel."""
-    from session.service import SessionService
-
-    db_url = settings.db_url or f"sqlite:///{settings.sessions_dir / 'volleysense.db'}"
-    service = SessionService(db_url, settings.sessions_dir)
-
-    sessions = service.list_sessions(limit=50)
+    with session_service() as service:
+        sessions = service.list_sessions(limit=50)
     context = {
         "request": request,
         "sessions": sessions,
@@ -247,10 +264,7 @@ async def analyze_htmx(
             {
                 "role": "user",
                 "content": [{"type": "text", "text": prompt}]
-                + [
-                    {"type": "image_url", "image_url": {"url": url}}
-                    for url in images
-                ],
+                + [{"type": "image_url", "image_url": {"url": url}} for url in images],
             },
         ]
 
@@ -275,9 +289,7 @@ async def analyze_htmx(
             .strip()
         )
         choice = (
-            (response.get("choices") or [{}])[0]
-            .get("message", {})
-            .get("content", "")
+            (response.get("choices") or [{}])[0].get("message", {}).get("content", "")
         )
         try:
             start = choice.find("{")
@@ -300,18 +312,14 @@ async def analyze_htmx(
                 except Exception:
                     continue
             if valid_pts:
-                out_dir = os.path.join(SESSION_DIR, "heatmaps")
-                os.makedirs(out_dir, exist_ok=True)
+                out_dir = SESSION_PATH / "heatmaps"
+                out_dir.mkdir(parents=True, exist_ok=True)
                 base_name = os.path.splitext(os.path.basename(video.filename))[0]
-                heatmap_img_path = Path(
-                    render_heatmap(
-                        valid_pts,
-                        os.path.join(
-                            out_dir, f"hm_{base_name}.png"
-                        ),
-                    )
+                heatmap_img_path = render_heatmap(
+                    valid_pts,
+                    out_dir / f"hm_{base_name}.png",
                 )
-                csv_path = Path(out_dir) / f"hm_{base_name}.csv"
+                csv_path = out_dir / f"hm_{base_name}.csv"
                 with csv_path.open("w", newline="", encoding="utf-8") as fh:
                     writer = csv.writer(fh)
                     writer.writerow(["x", "y", "h"])
@@ -331,15 +339,15 @@ async def analyze_htmx(
             img_url = _public_url(heatmap_img_path)
             if img_url:
                 html += (
-                    "<div class=\"divider\">Heatmap</div>"
-                    f"<img src=\"{img_url}\" class=\"rounded border border-base-300\">"
+                    '<div class="divider">Heatmap</div>'
+                    f'<img src="{img_url}" class="rounded border border-base-300">'
                 )
             if heatmap_csv_path:
                 csv_url = _public_url(heatmap_csv_path)
                 if csv_url:
                     html += (
-                        "<p class=\"mt-2 text-sm\">Ball trajectory CSV: "
-                        f"<a class=\"link link-primary\" href=\"{csv_url}\" target=\"_blank\">download</a></p>"
+                        '<p class="mt-2 text-sm">Ball trajectory CSV: '
+                        f'<a class="link link-primary" href="{csv_url}" target="_blank">download</a></p>'
                     )
         return HTMLResponse(html)
     except Exception as exc:
@@ -365,10 +373,10 @@ async def heatmap_pipeline(
     overlay: str = Form("true"),
     renderers: List[str] | None = Form(None),
 ) -> HTMLResponse:
-    temp_path = Path(SESSION_DIR) / f"pipeline_{uuid.uuid4().hex}_{video.filename}"
+    temp_path = SESSION_PATH / f"pipeline_{uuid.uuid4().hex}_{video.filename}"
     temp_path.write_bytes(await video.read())
 
-    run_dir = Path(SESSION_DIR) / "heatmaps" / f"run_{uuid.uuid4().hex}"
+    run_dir = SESSION_PATH / "heatmaps" / f"run_{uuid.uuid4().hex}"
     try:
         selected_renderers = [r for r in (renderers or []) if r]
         artifacts = run_heatmap_pipeline(
@@ -385,7 +393,9 @@ async def heatmap_pipeline(
         html = f"<div class='alert alert-error'><span>{exc}</span></div>"
         return HTMLResponse(html, status_code=400)
     except Exception as exc:
-        html = f"<div class='alert alert-error'><span>Pipeline failed: {exc}</span></div>"
+        html = (
+            f"<div class='alert alert-error'><span>Pipeline failed: {exc}</span></div>"
+        )
         return HTMLResponse(html, status_code=500)
     finally:
         with contextlib.suppress(OSError):
@@ -448,11 +458,10 @@ async def heatmap(
             continue
         points.append((float(row[0]), float(row[1]), float(row[2])))
 
-    out_path = os.path.join(
-        SESSION_DIR,
-        "heatmaps",
-        f"heatmap_{os.path.basename(csvfile.filename)}.png",
+    out_path = (
+        SESSION_PATH / "heatmaps" / f"heatmap_{os.path.basename(csvfile.filename)}.png"
     )
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     try:
         saved_path = render_heatmap_sexy(
             points,
@@ -466,7 +475,7 @@ async def heatmap(
             trail_width_px=float(trail_width_px),
         )
     except Exception:
-        saved_path = Path(render_heatmap(points, out_path))
+        saved_path = render_heatmap(points, out_path)
 
     return FileResponse(saved_path, media_type="image/png")
 
@@ -549,22 +558,27 @@ async def process_video_with_tracking(
             heatmap_path = session_dir / "heatmaps" / f"heatmap_{video_filename}.png"
             heatmap_path.parent.mkdir(parents=True, exist_ok=True)
             import cv2
+
             cv2.imwrite(str(heatmap_path), result.heatmap)
 
-        return JSONResponse({
-            "success": True,
-            "video_path": _public_url(video_path),
-            "output_path": _public_url(output_path) if enable_overlays else None,
-            "heatmap_path": _public_url(heatmap_path) if heatmap_path else None,
-            "total_frames": result.total_frames,
-            "processed_frames": result.processed_frames,
-            "total_tracks": len(result.track_histories),
-            "analytics": analytics,
-        })
+        return JSONResponse(
+            {
+                "success": True,
+                "video_path": _public_url(video_path),
+                "output_path": _public_url(output_path) if enable_overlays else None,
+                "heatmap_path": _public_url(heatmap_path) if heatmap_path else None,
+                "total_frames": result.total_frames,
+                "processed_frames": result.processed_frames,
+                "total_tracks": len(result.track_histories),
+                "analytics": analytics,
+            }
+        )
 
     except Exception as e:
         logger.error(f"Video processing failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Video processing failed: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Video processing failed: {str(e)}"
+        )
 
 
 @app.get("/_api/analytics/stats")
@@ -577,34 +591,26 @@ async def get_analytics_stats(
     If session_id is provided, returns stats for that session.
     Otherwise returns aggregate stats across all sessions.
     """
-    from scoring.stats import StatsAccumulator
-    from session.service import SessionService
-
-    # This is a simplified version - in production you'd load from database
-    # For now, return mock data or load from session artifacts
-
     if session_id:
-        # Load stats for specific session
-        with SessionService(settings.db_url) as svc:
-            session = svc.get_session(session_id)
-            if not session:
-                raise HTTPException(status_code=404, detail="Session not found")
+        try:
+            with session_service() as svc:
+                svc.load_session(session_id)
+                rollup = svc.get_rollup(session_id)
+        except NotFoundError:
+            raise HTTPException(status_code=404, detail="Session not found")
 
-            # Get rollup stats
-            rollup = svc.get_rollup(session_id)
+        players = [
+            {
+                "track_id": index,
+                "team": entry.team_side or "",
+                "number": entry.number or "",
+                "event_type": entry.event_type,
+                "count": entry.count,
+            }
+            for index, entry in enumerate(rollup, start=1)
+        ]
 
-            # Convert to player format
-            players = []
-            for stat in rollup:
-                players.append({
-                    "track_id": stat.get("track_id", 0),
-                    "team": stat.get("team_side", ""),
-                    "number": stat.get("number", ""),
-                    "event_type": stat.get("event_type", ""),
-                    "count": stat.get("count", 0),
-                })
-
-            return JSONResponse({"players": players})
+        return JSONResponse({"players": players})
     else:
         # Return empty for now - could implement cross-session analytics
         return JSONResponse({"players": []})
@@ -617,37 +623,34 @@ async def export_analytics(
     """
     Export analytics data as CSV.
     """
-    from scoring.stats import StatsAccumulator
-    from session.service import SessionService
+    export_dir = settings.sessions_dir / session_id / "exports"
 
-    with SessionService(settings.db_url) as svc:
-        # Export session data to CSV
-        export_result = svc.export_csv(session_id)
+    with session_service() as svc:
+        export_result = svc.export_csv(session_id, str(export_dir))
 
-        if export_result.events_csv and Path(export_result.events_csv).exists():
-            return FileResponse(
-                export_result.events_csv,
-                media_type="text/csv",
-                filename=f"stats_{session_id}.csv"
-            )
-        else:
-            raise HTTPException(status_code=404, detail="No analytics data found")
+    events_csv = export_result.get("events")
+    if events_csv and Path(events_csv).exists():
+        return FileResponse(
+            events_csv,
+            media_type="text/csv",
+            filename=f"stats_{session_id}.csv",
+        )
+
+    raise HTTPException(status_code=404, detail="No analytics data found")
 
 
 @app.get("/_partial/analytics")
 async def analytics_dashboard_partial(request: Request):
     """Render analytics dashboard partial."""
-    templates = Jinja2Templates(directory="webapp/templates")
-    return templates.TemplateResponse(
-        "_analytics_dashboard.html",
-        {"request": request}
-    )
+    return templates.TemplateResponse("_analytics_dashboard.html", {"request": request})
 
 
 def run(host: str = "0.0.0.0", port: int = 7860) -> None:
     import uvicorn
 
     uvicorn.run("webapp.server:app", host=host, port=port, reload=False)
+
+
 @app.get("/_api/presets")
 async def list_presets() -> dict:
     presets = [preset.to_dict() for preset in load_presets(PRESETS_PATH)]
@@ -676,4 +679,3 @@ async def create_preset(preset: PresetPayload) -> dict:
         ),
     )
     return {"preset": saved.to_dict()}
-
