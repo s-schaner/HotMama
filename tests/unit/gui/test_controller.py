@@ -13,8 +13,9 @@ from deploy.gui.app.storage import StorageManager
 
 class FakeApiClient:
     def __init__(self) -> None:
-        self.submissions: list[tuple[str, dict]] = []
+        self.submissions: list[tuple[str, dict, str]] = []
         self.state: JobState | None = None
+        self.last_job_type: str | None = None
 
     def submit_job(
         self,
@@ -29,7 +30,8 @@ class FakeApiClient:
             submitted_at=datetime.utcnow(),
             profile="cpu",
         )
-        self.submissions.append((source_uri, parameters or {}))
+        self.submissions.append((source_uri, parameters or {}, job_type))
+        self.last_job_type = job_type
         self.state = JobState(
             job_id=job_id,
             status="queued",
@@ -71,6 +73,19 @@ def test_submit_job_success(controller: tuple[GuiController, FakeApiClient], tmp
     assert UUID(job_id)
     assert "queued" in message
     assert client.submissions
+
+
+def test_submit_job_with_custom_type(
+    controller: tuple[GuiController, FakeApiClient], tmp_path
+) -> None:
+    gui, client = controller
+    video = tmp_path / "clip.mp4"
+    video.write_bytes(b"data")
+
+    job_id, _ = gui.submit_job(str(video), "{}", job_type="vision.segment")
+
+    assert UUID(job_id)
+    assert client.last_job_type == "vision.segment"
 
 
 def test_submit_job_invalid_json(controller: tuple[GuiController, FakeApiClient], tmp_path) -> None:

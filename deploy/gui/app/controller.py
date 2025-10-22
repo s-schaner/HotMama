@@ -27,7 +27,12 @@ class GuiController:
         self._storage = storage
         self._settings = settings
 
-    def submit_job(self, upload_path: str | None, parameters_json: str) -> tuple[str, str]:
+    def submit_job(
+        self,
+        upload_path: str | None,
+        parameters_json: str,
+        job_type: str = "vision.process",
+    ) -> tuple[str, str]:
         if not upload_path:
             return "", "⚠️ Please upload a video before submitting."
 
@@ -38,16 +43,23 @@ class GuiController:
 
         stored_path = self._storage.save_upload(upload_path)
         LOGGER.info(
-            "submitting job", extra={"path": str(stored_path), "service": self._settings.service_name}
+            "submitting job",
+            extra={
+                "path": str(stored_path),
+                "job_type": job_type,
+                "service": self._settings.service_name,
+            },
         )
 
         try:
-            handle = self._client.submit_job(str(stored_path), parameters=parameters)
+            handle = self._client.submit_job(
+                str(stored_path), parameters=parameters, job_type=job_type
+            )
         except RuntimeError as exc:
             LOGGER.error("job submission failed", exc_info=exc)
             return "", f"❌ Failed to submit job: {exc}"
 
-        message = self._format_submission_message(handle)
+        message = self._format_submission_message(handle, job_type)
         return str(handle.job_id), message
 
     def refresh_status(self, job_id_text: str) -> tuple[dict[str, str], str, str]:
@@ -81,13 +93,14 @@ class GuiController:
             return {}
         return json.loads(payload)
 
-    def _format_submission_message(self, handle: JobHandle) -> str:
+    def _format_submission_message(self, handle: JobHandle, job_type: str) -> str:
         return (
             "✅ Job {job} queued on {profile} profile at {time}".format(
                 job=handle.job_id,
                 profile=handle.profile.upper(),
                 time=handle.submitted_at.isoformat(timespec="seconds"),
             )
+            + f"\n• Task: {job_type}"
         )
 
     def _format_status_message(self, state: JobState) -> str:
