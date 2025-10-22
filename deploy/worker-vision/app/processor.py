@@ -55,7 +55,9 @@ class VisionProcessor:
             "job_id": str(job.job_id),
             "profile": job.profile,
             "summary": summary,
-            "parameters": payload.get("parameters", {}),
+            "parameters": payload.get("options")
+            if isinstance(payload.get("options"), dict)
+            else payload.get("parameters", {}),
         }
         artifact_path.write_text(json.dumps(stats, indent=2))
         return ProcessResult(

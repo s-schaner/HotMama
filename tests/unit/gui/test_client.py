@@ -21,6 +21,8 @@ def test_api_client_submit_status_and_download(tmp_path) -> None:
                     "status": "queued",
                     "submitted_at": submitted_at,
                     "profile": "cpu",
+                    "priority": "normal",
+                    "idempotency_key": "demo",
                 },
             )
         if request.method == "GET" and request.url.path.endswith(f"/jobs/{job_id}"):
@@ -34,6 +36,7 @@ def test_api_client_submit_status_and_download(tmp_path) -> None:
                     "profile": "cpu",
                     "message": None,
                     "artifact_path": "/app/sessions/example/result.json",
+                    "priority": "high",
                 },
             )
         if request.method == "GET" and request.url.path.endswith(
@@ -52,10 +55,14 @@ def test_api_client_submit_status_and_download(tmp_path) -> None:
         handle = client.submit_job("/tmp/video.mp4")
         assert handle.job_id == job_id
         assert handle.status == "queued"
+        assert handle.priority == "normal"
+        assert handle.task == "analyze_video"
+        assert handle.idempotency_key == "demo"
 
         state = client.get_status(job_id)
         assert state.status == "completed"
         assert state.as_dict()["artifact_path"] == "/app/sessions/example/result.json"
+        assert state.priority == "high"
 
         artifact_path = client.download_artifact(job_id, tmp_path)
         assert artifact_path.name == "result.json"

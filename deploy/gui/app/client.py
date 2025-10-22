@@ -11,6 +11,21 @@ from uuid import UUID
 import httpx
 
 
+_VALID_TASKS = {
+    "analyze_video",
+    "extract_clips",
+    "generate_heatmap",
+    "detect_events",
+}
+
+_TASK_ALIASES = {
+    "vision.process": "analyze_video",
+    "vision.segment": "extract_clips",
+    "vision.heatmap": "generate_heatmap",
+    "vision.events": "detect_events",
+}
+
+
 @dataclass(slots=True)
 class JobHandle:
     """Represents the initial response after submitting a job."""
@@ -19,6 +34,9 @@ class JobHandle:
     status: str
     submitted_at: datetime
     profile: str
+    priority: str
+    idempotency_key: str | None
+    task: str
 
 
 @dataclass(slots=True)
@@ -32,6 +50,7 @@ class JobState:
     profile: str
     message: str | None
     artifact_path: str | None
+    priority: str
 
     def as_dict(self) -> dict[str, Any]:
         """Return a serialisable representation for UI rendering."""
@@ -44,6 +63,7 @@ class JobState:
             "profile": self.profile,
             "message": self.message or "",
             "artifact_path": self.artifact_path or "",
+            "priority": self.priority,
         }
 
 
@@ -65,15 +85,20 @@ class ApiClient:
         source_uri: str,
         parameters: dict[str, Any] | None = None,
         job_type: str = "vision.process",
+        priority: str | None = None,
     ) -> JobHandle:
-        payload: dict[str, Any] = {
+        task = self._normalise_task(job_type)
+        body: dict[str, Any] = {
             "payload": {
+                "task": task,
                 "source_uri": source_uri,
-                "job_type": job_type,
-                "parameters": parameters or {},
+                "options": parameters or {},
             }
         }
-        response = self._client.post("/jobs", json=payload)
+        if priority:
+            body["priority"] = priority
+
+        response = self._client.post("/jobs", json=body)
         self._raise_for_status(response)
         data = response.json()
         return JobHandle(
@@ -81,6 +106,9 @@ class ApiClient:
             status=data.get("status", "queued"),
             submitted_at=datetime.fromisoformat(data["submitted_at"]),
             profile=data.get("profile", "cpu"),
+            priority=data.get("priority", body.get("priority", "normal")),
+            idempotency_key=data.get("idempotency_key"),
+            task=task,
         )
 
     def get_status(self, job_id: UUID) -> JobState:
@@ -95,6 +123,7 @@ class ApiClient:
             profile=data.get("profile", "cpu"),
             message=data.get("message"),
             artifact_path=data.get("artifact_path"),
+            priority=data.get("priority", "normal"),
         )
 
     def download_artifact(self, job_id: UUID, destination: Path) -> Path:
@@ -134,6 +163,13 @@ class ApiClient:
 
     def __exit__(self, *_: Any) -> None:  # pragma: no cover - convenience
         self.close()
+
+    @staticmethod
+    def _normalise_task(task: str) -> str:
+        normalised = _TASK_ALIASES.get(task, task or "")
+        if normalised in _VALID_TASKS:
+            return normalised
+        return "analyze_video"
 
 
 __all__ = ["ApiClient", "JobHandle", "JobState"]

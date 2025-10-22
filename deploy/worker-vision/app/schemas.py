@@ -14,6 +14,7 @@ class QueuedJob(BaseModel):
     submitted_at: datetime
     status: Literal["queued", "received", "processing", "completed", "failed"]
     profile: Literal["cpu", "gpu", "rocm"]
+    priority: Literal["low", "normal", "high"] = "normal"
     payload: dict[str, Any] = Field(default_factory=dict)
 
 
