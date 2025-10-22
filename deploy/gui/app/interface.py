@@ -268,9 +268,11 @@ HELP_GUIDE_MARKDOWN = """
 
 
 def create_interface(controller: GuiController):
-    """Construct and return the Gradio Blocks layout."""
+    """Construct and return the Gradio Blocks layout with modular tabs."""
 
     import gradio as gr
+
+    from .modules import VideoLLMInteractionModule
 
     def _render_alert(message: str) -> str:
         if not message:
@@ -414,234 +416,243 @@ def create_interface(controller: GuiController):
         gr.HTML(HERO_HTML)
         gr.HTML(FEATURE_GRID_HTML)
 
-        active_job = gr.State("")
+        # Tab-based interface for different modules
+        with gr.Tabs():
+            with gr.Tab("Video Analysis"):
+                active_job = gr.State("")
 
-        with gr.Row(elem_classes=["main-grid"], equal_height=True):
-            with gr.Column(elem_classes=["card", "card--form"], scale=6):
-                gr.Markdown("### Queue a new analysis run")
-                gr.Markdown(
-                    "Submit a short clip and optional JSON parameters. We'll hand it off to the refreshed FastAPI + Redis queue stack.",
-                    elem_classes=["card__subtitle"],
+                with gr.Row(elem_classes=["main-grid"], equal_height=True):
+                    with gr.Column(elem_classes=["card", "card--form"], scale=6):
+                        gr.Markdown("### Queue a new analysis run")
+                        gr.Markdown(
+                            "Submit a short clip and optional JSON parameters. We'll hand it off to the refreshed FastAPI + Redis queue stack.",
+                            elem_classes=["card__subtitle"],
+                        )
+                        upload = gr.File(
+                            label="Vision clip",
+                            file_types=[".mp4", ".mov", ".mkv", ".avi"],
+                            type="filepath",
+                        )
+                        source_preview = gr.Video(
+                            label="Source preview",
+                            interactive=False,
+                            height=360,
+                            elem_classes=["video-preview"],
+                            format=None,
+                        )
+                        profile = gr.Radio(
+                            label="Analysis profile",
+                            choices=[
+                                ("Full analysis run", "pipeline.analysis"),
+                                ("Segmentation sweep", "pipeline.segment"),
+                                ("Event timeline triage", "pipeline.events"),
+                            ],
+                            value="pipeline.analysis",
+                        )
+                        overlays = gr.CheckboxGroup(
+                            label="Video overlays",
+                            choices=[
+                                (
+                                    "Activity heatmap (intensity map)",
+                                    "overlay.activity_heatmap",
+                                ),
+                                (
+                                    "Object tracking trails",
+                                    "overlay.object_tracking",
+                                ),
+                                ("Pose skeletons", "overlay.pose_skeleton"),
+                            ],
+                            value=["overlay.activity_heatmap"],
+                            info="Combine overlays to tailor the rendered diagnostic layers.",
+                        )
+                        mode_choices: list[tuple[str, str]] = [("Structured JSON", "json")]
+                        if controller.supports_natural_language:
+                            mode_choices.append(("Natural language", "nl"))
+                        input_mode = gr.Radio(
+                            label="Submission mode",
+                            choices=mode_choices,
+                            value=DEFAULT_INPUT_MODE,
+                        )
+                        params = gr.Code(
+                            label="Parameters (JSON)",
+                            value="{}",
+                            language="json",
+                            visible=True,
+                        )
+                        nl_prompt = gr.TextArea(
+                            label="Natural language request",
+                            placeholder="Describe the analysis you need, relevant moments, and desired overlays.",
+                            visible=False,
+                            lines=6,
+                        )
+                        enrich_checkbox = gr.Checkbox(
+                            label="Enrich manifest with qwen2.5-vl-7b",
+                            value=False,
+                            visible=False,
+                        )
+                        help_state = gr.State(False)
+                        with gr.Row():
+                            help_btn = gr.Button(
+                                "Show schema",
+                                variant="secondary",
+                                icon="❓",
+                            )
+                        help_text = gr.Markdown(visible=False)
+                        help_schema = gr.Code(
+                            label="Job manifest schema",
+                            value="",
+                            language="json",
+                            interactive=False,
+                            visible=False,
+                        )
+                        with gr.Row():
+                            submit_btn = gr.Button(
+                                "Queue analysis",
+                                variant="primary",
+                                icon="🚀",
+                            )
+                            clear_btn = gr.Button(
+                                "Reset form",
+                                variant="secondary",
+                                icon="🧹",
+                            )
+                        job_id_display = gr.Textbox(
+                            label="Active job",
+                            interactive=False,
+                            placeholder="Submit a job to populate",
+                        )
+                        submission_feedback = gr.HTML()
+                        manifest_preview = gr.JSON(
+                            label="Job manifest (preview)",
+                            value={},
+                            visible=False,
+                        )
+                        gr.Markdown(
+                            "The upload is stored under <code>sessions/gui/uploads</code> and shared with the worker container.",
+                            elem_classes=["form-footer"],
+                        )
+
+                    with gr.Column(elem_classes=["card", "card--status"], scale=6):
+                        gr.Markdown("### Monitor progress")
+                        gr.Markdown(
+                            "Paste any job ID to follow along. Status updates stream from the Redis status hashes maintained by the worker module.",
+                            elem_classes=["card__subtitle"],
+                        )
+                        job_id_input = gr.Textbox(
+                            label="Job to monitor",
+                            placeholder="00000000-0000-0000-0000-000000000000",
+                        )
+                        refresh_btn = gr.Button(
+                            "Refresh status",
+                            variant="primary",
+                            icon="🔄",
+                        )
+                        status_message = gr.HTML()
+                        status_json = gr.JSON(
+                            label="Status detail",
+                            value={},
+                            elem_classes=["status-json"],
+                        )
+                        artifact_preview = gr.Video(
+                            label="Processed preview",
+                            interactive=False,
+                            height=360,
+                            elem_classes=["video-preview"],
+                            format=None,
+                        )
+                        artifact_file = gr.File(
+                            label="Artifact download",
+                            interactive=False,
+                        )
+                        gr.Markdown(
+                            "Artifacts are mirrored into <code>sessions/gui/downloads</code> for instant download once the worker reports completion.",
+                            elem_classes=["form-footer"],
+                        )
+
+                # Event handlers for Video Analysis tab
+                input_mode.change(
+                    _handle_mode_change,
+                    inputs=input_mode,
+                    outputs=[params, nl_prompt, enrich_checkbox],
                 )
-                upload = gr.File(
-                    label="Vision clip",
-                    file_types=[".mp4", ".mov", ".mkv", ".avi"],
-                    type="filepath",
+
+                help_btn.click(
+                    _toggle_help,
+                    inputs=help_state,
+                    outputs=[help_text, help_schema, help_state, help_btn],
                 )
-                source_preview = gr.Video(
-                    label="Source preview",
-                    interactive=False,
-                    height=360,
-                    elem_classes=["video-preview"],
-                    format=None,
+
+                upload.upload(
+                    _handle_source_preview,
+                    inputs=upload,
+                    outputs=source_preview,
                 )
-                profile = gr.Radio(
-                    label="Analysis profile",
-                    choices=[
-                        ("Full analysis run", "pipeline.analysis"),
-                        ("Segmentation sweep", "pipeline.segment"),
-                        ("Event timeline triage", "pipeline.events"),
+
+                submit_btn.click(
+                    _handle_submit,
+                    inputs=[
+                        upload,
+                        params,
+                        profile,
+                        overlays,
+                        active_job,
+                        job_id_input,
+                        input_mode,
+                        nl_prompt,
+                        enrich_checkbox,
                     ],
-                    value="pipeline.analysis",
-                )
-                overlays = gr.CheckboxGroup(
-                    label="Video overlays",
-                    choices=[
-                        (
-                            "Activity heatmap (intensity map)",
-                            "overlay.activity_heatmap",
-                        ),
-                        (
-                            "Object tracking trails",
-                            "overlay.object_tracking",
-                        ),
-                        ("Pose skeletons", "overlay.pose_skeleton"),
+                    outputs=[
+                        job_id_display,
+                        job_id_input,
+                        submission_feedback,
+                        status_message,
+                        status_json,
+                        artifact_file,
+                        artifact_preview,
+                        source_preview,
+                        active_job,
+                        manifest_preview,
                     ],
-                    value=["overlay.activity_heatmap"],
-                    info="Combine overlays to tailor the rendered diagnostic layers.",
-                )
-                mode_choices: list[tuple[str, str]] = [("Structured JSON", "json")]
-                if controller.supports_natural_language:
-                    mode_choices.append(("Natural language", "nl"))
-                input_mode = gr.Radio(
-                    label="Submission mode",
-                    choices=mode_choices,
-                    value=DEFAULT_INPUT_MODE,
-                )
-                params = gr.Code(
-                    label="Parameters (JSON)",
-                    value="{}",
-                    language="json",
-                    visible=True,
-                )
-                nl_prompt = gr.TextArea(
-                    label="Natural language request",
-                    placeholder="Describe the analysis you need, relevant moments, and desired overlays.",
-                    visible=False,
-                    lines=6,
-                )
-                enrich_checkbox = gr.Checkbox(
-                    label="Enrich manifest with qwen2.5-vl-7b",
-                    value=False,
-                    visible=False,
-                )
-                help_state = gr.State(False)
-                with gr.Row():
-                    help_btn = gr.Button(
-                        "Show schema",
-                        variant="secondary",
-                        icon="❓",
-                    )
-                help_text = gr.Markdown(visible=False)
-                help_schema = gr.Code(
-                    label="Job manifest schema",
-                    value="",
-                    language="json",
-                    interactive=False,
-                    visible=False,
-                )
-                with gr.Row():
-                    submit_btn = gr.Button(
-                        "Queue analysis",
-                        variant="primary",
-                        icon="🚀",
-                    )
-                    clear_btn = gr.Button(
-                        "Reset form",
-                        variant="secondary",
-                        icon="🧹",
-                    )
-                job_id_display = gr.Textbox(
-                    label="Active job",
-                    interactive=False,
-                    placeholder="Submit a job to populate",
-                )
-                submission_feedback = gr.HTML()
-                manifest_preview = gr.JSON(
-                    label="Job manifest (preview)",
-                    value={},
-                    visible=False,
-                )
-                gr.Markdown(
-                    "The upload is stored under <code>sessions/gui/uploads</code> and shared with the worker container.",
-                    elem_classes=["form-footer"],
                 )
 
-            with gr.Column(elem_classes=["card", "card--status"], scale=6):
-                gr.Markdown("### Monitor progress")
-                gr.Markdown(
-                    "Paste any job ID to follow along. Status updates stream from the Redis status hashes maintained by the worker module.",
-                    elem_classes=["card__subtitle"],
-                )
-                job_id_input = gr.Textbox(
-                    label="Job to monitor",
-                    placeholder="00000000-0000-0000-0000-000000000000",
-                )
-                refresh_btn = gr.Button(
-                    "Refresh status",
-                    variant="primary",
-                    icon="🔄",
-                )
-                status_message = gr.HTML()
-                status_json = gr.JSON(
-                    label="Status detail",
-                    value={},
-                    elem_classes=["status-json"],
-                )
-                artifact_preview = gr.Video(
-                    label="Processed preview",
-                    interactive=False,
-                    height=360,
-                    elem_classes=["video-preview"],
-                    format=None,
-                )
-                artifact_file = gr.File(
-                    label="Artifact download",
-                    interactive=False,
-                )
-                gr.Markdown(
-                    "Artifacts are mirrored into <code>sessions/gui/downloads</code> for instant download once the worker reports completion.",
-                    elem_classes=["form-footer"],
+                refresh_btn.click(
+                    _handle_refresh,
+                    inputs=[job_id_input, active_job],
+                    outputs=[
+                        job_id_display,
+                        status_json,
+                        status_message,
+                        artifact_file,
+                        artifact_preview,
+                        active_job,
+                    ],
                 )
 
-        input_mode.change(
-            _handle_mode_change,
-            inputs=input_mode,
-            outputs=[params, nl_prompt, enrich_checkbox],
-        )
+                clear_btn.click(
+                    _handle_clear,
+                    inputs=None,
+                    outputs=[
+                        upload,
+                        params,
+                        submission_feedback,
+                        source_preview,
+                        profile,
+                        overlays,
+                        manifest_preview,
+                        input_mode,
+                        nl_prompt,
+                        enrich_checkbox,
+                        help_text,
+                        help_schema,
+                        help_state,
+                        help_btn,
+                    ],
+                )
 
-        help_btn.click(
-            _toggle_help,
-            inputs=help_state,
-            outputs=[help_text, help_schema, help_state, help_btn],
-        )
-
-        upload.upload(
-            _handle_source_preview,
-            inputs=upload,
-            outputs=source_preview,
-        )
-
-        submit_btn.click(
-            _handle_submit,
-            inputs=[
-                upload,
-                params,
-                profile,
-                overlays,
-                active_job,
-                job_id_input,
-                input_mode,
-                nl_prompt,
-                enrich_checkbox,
-            ],
-            outputs=[
-                job_id_display,
-                job_id_input,
-                submission_feedback,
-                status_message,
-                status_json,
-                artifact_file,
-                artifact_preview,
-                source_preview,
-                active_job,
-                manifest_preview,
-            ],
-        )
-
-        refresh_btn.click(
-            _handle_refresh,
-            inputs=[job_id_input, active_job],
-            outputs=[
-                job_id_display,
-                status_json,
-                status_message,
-                artifact_file,
-                artifact_preview,
-                active_job,
-            ],
-        )
-
-        clear_btn.click(
-            _handle_clear,
-            inputs=None,
-            outputs=[
-                upload,
-                params,
-                submission_feedback,
-                source_preview,
-                profile,
-                overlays,
-                manifest_preview,
-                input_mode,
-                nl_prompt,
-                enrich_checkbox,
-                help_text,
-                help_schema,
-                help_state,
-                help_btn,
-            ],
-        )
+            # Video LLM Interaction Tab
+            with gr.Tab("Video LLM Interaction"):
+                video_llm_module = VideoLLMInteractionModule()
+                video_llm_ui = video_llm_module.build_ui(controller)
 
     return demo
 
