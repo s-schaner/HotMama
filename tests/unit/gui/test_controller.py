@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from types import SimpleNamespace
+from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
@@ -15,7 +16,7 @@ from deploy.gui.app.storage import StorageManager
 
 class FakeApiClient:
     def __init__(self) -> None:
-        self.submissions: list[tuple[str, dict, str]] = []
+        self.submissions: list[dict[str, Any]] = []
         self.state: JobState | None = None
         self.last_task: str | None = None
 
@@ -25,6 +26,7 @@ class FakeApiClient:
         parameters: dict | None = None,
         job_type: str = "vision.process",
         priority: str | None = None,
+        clips: list[dict[str, str]] | None = None,
     ) -> JobHandle:
         job_id = uuid4()
         task = ApiClient._normalise_task(job_type)
@@ -37,7 +39,14 @@ class FakeApiClient:
             idempotency_key="test",
             task=task,
         )
-        self.submissions.append((source_uri, parameters or {}, task))
+        self.submissions.append(
+            {
+                "source_uri": source_uri,
+                "parameters": parameters or {},
+                "task": task,
+                "clips": clips or [],
+            }
+        )
         self.last_task = task
         self.state = JobState(
             job_id=job_id,
@@ -106,6 +115,39 @@ def test_submit_job_invalid_json(controller: tuple[GuiController, FakeApiClient]
     job_id, message = gui.submit_job(str(video), "{not json}")
     assert job_id == ""
     assert message.startswith("❌")
+
+
+def test_submit_job_with_clips(controller: tuple[GuiController, FakeApiClient], tmp_path) -> None:
+    gui, client = controller
+    video = tmp_path / "clip.mp4"
+    video.write_bytes(b"data")
+
+    clips = [{"start": "00:00:01.500", "end": "00:00:04.250"}]
+    job_id, message = gui.submit_job(str(video), "{}", clip_ranges=clips)
+
+    assert UUID(job_id)
+    assert "queued" in message
+    submitted = client.submissions[-1]
+    assert submitted["clips"] == [
+        {"start": "00:00:01.5", "end": "00:00:04.25"}
+    ]
+
+
+def test_submit_job_with_invalid_clips(
+    controller: tuple[GuiController, FakeApiClient], tmp_path
+) -> None:
+    gui, _ = controller
+    video = tmp_path / "clip.mp4"
+    video.write_bytes(b"data")
+
+    job_id, message = gui.submit_job(
+        str(video),
+        "{}",
+        clip_ranges=[{"start": "00:00:05.000", "end": "00:00:02.000"}],
+    )
+
+    assert job_id == ""
+    assert message.startswith("❌ Invalid clip configuration")
 
 
 def test_refresh_status_with_artifact(

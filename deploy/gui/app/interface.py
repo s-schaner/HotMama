@@ -275,15 +275,24 @@ def create_interface(controller: GuiController):
             return gr.update(value=None)
         return str(path)
 
+    def _prepare_clip_table(clips: list[dict[str, str]] | None) -> list[list[str]]:
+        if not clips:
+            return []
+        return [[clip.get("start", ""), clip.get("end", "")] for clip in clips]
+
     def _handle_submit(
         upload_path: str | None,
         params_text: str,
         job_type_value: str,
+        clip_ranges: list[dict[str, str]] | None,
         current_job_id: str,
         current_monitor: str,
     ):
         job_id, message = controller.submit_job(
-            upload_path, params_text, job_type=job_type_value
+            upload_path,
+            params_text,
+            job_type=job_type_value,
+            clip_ranges=clip_ranges,
         )
         banner = _render_alert(message)
         source_preview = _video_value(upload_path)
@@ -298,6 +307,7 @@ def create_interface(controller: GuiController):
                 gr.update(value=None),
                 source_preview,
                 current_job_id,
+                clip_ranges or [],
             )
         return (
             job_id,
@@ -309,6 +319,7 @@ def create_interface(controller: GuiController):
             gr.update(value=None),
             source_preview,
             job_id,
+            clip_ranges or [],
         )
 
     def _handle_refresh(job_id_text: str, current_active: str):
@@ -337,11 +348,53 @@ def create_interface(controller: GuiController):
     def _handle_source_preview(upload_path: str | None):
         return _video_value(upload_path)
 
+    def _handle_add_clip(
+        start: str, end: str, clips: list[dict[str, str]] | None
+    ):
+        start_value = (start or "").strip()
+        end_value = (end or "").strip()
+        current = list(clips or [])
+        if not start_value or not end_value:
+            return (
+                gr.update(value=start_value),
+                gr.update(value=end_value),
+                gr.update(value=_prepare_clip_table(current)),
+                current,
+            )
+        current.append({"start": start_value, "end": end_value})
+        return (
+            gr.update(value=""),
+            gr.update(value=""),
+            gr.update(value=_prepare_clip_table(current)),
+            current,
+        )
+
+    def _handle_clear_clips():
+        return (
+            gr.update(value=""),
+            gr.update(value=""),
+            gr.update(value=[]),
+            [],
+        )
+
+    def _handle_reset_form():
+        return (
+            gr.update(value=None),
+            "{}",
+            "",
+            gr.update(value=None),
+            "",
+            "",
+            gr.update(value=[]),
+            [],
+        )
+
     with gr.Blocks(title="HotMama Vision Console", css=CUSTOM_CSS) as demo:
         gr.HTML(HERO_HTML)
         gr.HTML(FEATURE_GRID_HTML)
 
         active_job = gr.State("")
+        clip_state = gr.State([])
 
         with gr.Row(elem_classes=["main-grid"], equal_height=True):
             with gr.Column(elem_classes=["card", "card--form"], scale=6):
@@ -376,6 +429,32 @@ def create_interface(controller: GuiController):
                     value="{}",
                     language="json",
                 )
+                with gr.Accordion("Clip ranges", open=False):
+                    clip_start = gr.Textbox(
+                        label="Start time",
+                        placeholder="00:00:00.000",
+                    )
+                    clip_end = gr.Textbox(
+                        label="End time",
+                        placeholder="00:00:05.250",
+                    )
+                    with gr.Row():
+                        add_clip_btn = gr.Button(
+                            "Add clip",
+                            variant="secondary",
+                            icon="➕",
+                        )
+                        clear_clips_btn = gr.Button(
+                            "Clear clips",
+                            variant="secondary",
+                            icon="♻️",
+                        )
+                    clip_table = gr.DataFrame(
+                        headers=["Start", "End"],
+                        datatype=["str", "str"],
+                        interactive=False,
+                        value=[],
+                    )
                 with gr.Row():
                     submit_btn = gr.Button(
                         "Queue analysis",
@@ -443,7 +522,7 @@ def create_interface(controller: GuiController):
 
         submit_btn.click(
             _handle_submit,
-            inputs=[upload, params, job_type, active_job, job_id_input],
+            inputs=[upload, params, job_type, clip_state, active_job, job_id_input],
             outputs=[
                 job_id_display,
                 job_id_input,
@@ -454,6 +533,7 @@ def create_interface(controller: GuiController):
                 artifact_preview,
                 source_preview,
                 active_job,
+                clip_state,
             ],
         )
 
@@ -470,10 +550,31 @@ def create_interface(controller: GuiController):
             ],
         )
 
-        clear_btn.click(
-            lambda: (gr.update(value=None), "{}", "", gr.update(value=None)),
+        add_clip_btn.click(
+            _handle_add_clip,
+            inputs=[clip_start, clip_end, clip_state],
+            outputs=[clip_start, clip_end, clip_table, clip_state],
+        )
+
+        clear_clips_btn.click(
+            _handle_clear_clips,
             inputs=None,
-            outputs=[upload, params, submission_feedback, source_preview],
+            outputs=[clip_start, clip_end, clip_table, clip_state],
+        )
+
+        clear_btn.click(
+            _handle_reset_form,
+            inputs=None,
+            outputs=[
+                upload,
+                params,
+                submission_feedback,
+                source_preview,
+                clip_start,
+                clip_end,
+                clip_table,
+                clip_state,
+            ],
         )
 
     return demo

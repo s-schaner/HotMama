@@ -44,7 +44,9 @@ def _create_dummy_video(path: Path, *, frame_count: int = 8, fps: int = 12) -> N
     writer.release()
 
 
-def _make_job(tmp_path: Path, video: Path) -> QueuedJob:
+def _make_job(
+    tmp_path: Path, video: Path, *, clips: list[dict[str, str]] | None = None
+) -> QueuedJob:
     return QueuedJob(
         job_id=uuid4(),
         submitted_at=datetime.utcnow(),
@@ -54,6 +56,7 @@ def _make_job(tmp_path: Path, video: Path) -> QueuedJob:
             "source_uri": str(video),
             "fps": 12,
             "options": {"overlays": ["heatmap", "tracking", "pose"]},
+            **({"clips": clips} if clips else {}),
         },
     )
 
@@ -82,6 +85,43 @@ def test_processor_creates_video_artifact_with_overlays(tmp_path: Path) -> None:
         "pose",
     }
     assert data["video"]["path"] == str(artifact_video)
+    assert data["video"]["clips_requested"] == []
+    assert data["video"]["clips_applied"] == []
+
+
+def test_processor_honors_clip_ranges(tmp_path: Path) -> None:
+    settings = Settings(artifact_root=tmp_path)
+    processor = VisionProcessor(settings)
+    video = tmp_path / "input.avi"
+    _create_dummy_video(video, frame_count=24, fps=12)
+    clips = [
+        {"start": "00:00:00.500", "end": "00:00:01.250"},
+        {"start": "00:00:01.750", "end": "00:00:01.900"},
+    ]
+    job = _make_job(tmp_path, video, clips=clips)
+
+    result = processor.process(job)
+
+    assert result.status == "completed"
+    assert result.artifact_path is not None
+    capture = cv2.VideoCapture(result.artifact_path)
+    written_frames = 0
+    while True:
+        success, _ = capture.read()
+        if not success:
+            break
+        written_frames += 1
+    capture.release()
+
+    metadata_path = tmp_path.joinpath(str(job.job_id), "result.json")
+    data = json.loads(metadata_path.read_text())
+    video_meta = data["video"]
+    assert video_meta["frames"] == written_frames == 11
+    assert video_meta["clips_requested"] == [
+        {"start": "00:00:00.5", "end": "00:00:01.25"},
+        {"start": "00:00:01.75", "end": "00:00:01.9"},
+    ]
+    assert video_meta["clips_applied"] == video_meta["clips_requested"]
 
 
 def test_processor_falls_back_to_mkv_when_mp4_unavailable(

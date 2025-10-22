@@ -86,6 +86,7 @@ class ApiClient:
         parameters: dict[str, Any] | None = None,
         job_type: str = "vision.process",
         priority: str | None = None,
+        clips: list[dict[str, str]] | None = None,
     ) -> JobHandle:
         task = self._normalise_task(job_type)
         body: dict[str, Any] = {
@@ -95,6 +96,8 @@ class ApiClient:
                 "options": parameters or {},
             }
         }
+        if clips:
+            body["payload"]["clips"] = clips
         if priority:
             body["priority"] = priority
 

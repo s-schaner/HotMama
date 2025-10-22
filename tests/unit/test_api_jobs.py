@@ -78,6 +78,9 @@ def test_submit_and_fetch_job() -> None:
                 "payload": {
                     "task": "analyze_video",
                     "source_uri": "/tmp/example.mp4",
+                    "clips": [
+                        {"start": "00:00:01.0", "end": "00:00:03.250"}
+                    ],
                     "options": {"mode": "fast"},
                 }
             },
@@ -92,6 +95,9 @@ def test_submit_and_fetch_job() -> None:
         queued = json.loads(fake.queue[0].decode())
         assert queued["priority"] == "normal"
         assert queued["payload"]["options"] == {"mode": "fast"}
+        assert queued["payload"]["clips"] == [
+            {"start": "00:00:01", "end": "00:00:03.25"}
+        ]
 
         status = client.get(f"/v1/jobs/{job_id}")
         assert status.status_code == 200

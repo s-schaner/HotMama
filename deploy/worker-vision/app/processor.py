@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+import re
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +16,38 @@ from .config import Settings, get_settings
 from .schemas import ProcessResult, QueuedJob
 
 LOGGER = logging.getLogger("hotmama.worker.processor")
+
+_TIME_PATTERN = re.compile(
+    r"^(?P<hours>\d{2}):(?P<minutes>\d{2}):(?P<seconds>\d{2})(?:\.(?P<millis>\d{1,3}))?$"
+)
+
+
+def _parse_timecode(value: str) -> float:
+    match = _TIME_PATTERN.fullmatch(value)
+    if not match:
+        raise ValueError("timecode must match HH:MM:SS(.mmm)")
+    hours = int(match.group("hours"))
+    minutes = int(match.group("minutes"))
+    seconds = int(match.group("seconds"))
+    if minutes >= 60 or seconds >= 60:
+        raise ValueError("minutes and seconds must be less than 60")
+    millis_group = match.group("millis")
+    millis = int(millis_group) if millis_group else 0
+    if millis_group and len(millis_group) < 3:
+        millis *= 10 ** (3 - len(millis_group))
+    total_millis = ((hours * 60 + minutes) * 60 + seconds) * 1000 + millis
+    return total_millis / 1000.0
+
+
+def _format_timecode(seconds: float) -> str:
+    total_millis = int(round(seconds * 1000))
+    hours, remainder = divmod(total_millis, 3600 * 1000)
+    minutes, remainder = divmod(remainder, 60 * 1000)
+    secs, millis = divmod(remainder, 1000)
+    if millis:
+        millis_str = f"{millis:03d}".rstrip("0")
+        return f"{hours:02d}:{minutes:02d}:{secs:02d}.{millis_str}"
+    return f"{hours:02d}:{minutes:02d}:{secs:02d}"
 
 
 class VisionProcessor:
@@ -72,6 +105,7 @@ class VisionProcessor:
                 overlays=overlays,
                 fps_override=self._extract_fps(payload),
                 artifact_dir=artifact_dir,
+                clips=payload.get("clips"),
             )
         else:
             render_error = "no source_uri provided"
@@ -125,6 +159,51 @@ class VisionProcessor:
                 return float(candidate)
         return None
 
+    def _resolve_clip_ranges(
+        self, clips: Any, fps: float
+    ) -> tuple[list[tuple[int, int]], list[dict[str, str]]]:
+        if fps <= 0 or not isinstance(clips, list):
+            return [], []
+
+        entries: list[tuple[tuple[int, int], dict[str, str]]] = []
+        for entry in clips:
+            if not isinstance(entry, dict):
+                continue
+            start_value = entry.get("start")
+            end_value = entry.get("end")
+            if not isinstance(start_value, str) or not isinstance(end_value, str):
+                continue
+            start_text = start_value.strip()
+            end_text = end_value.strip()
+            if not start_text or not end_text:
+                continue
+            try:
+                start_seconds = _parse_timecode(start_text)
+                end_seconds = _parse_timecode(end_text)
+            except ValueError:
+                continue
+            if end_seconds <= start_seconds:
+                continue
+            start_frame = max(0, int(math.floor(start_seconds * fps)))
+            end_frame = max(start_frame + 1, int(math.ceil(end_seconds * fps)))
+            entries.append(
+                (
+                    (start_frame, end_frame),
+                    {
+                        "start": _format_timecode(start_seconds),
+                        "end": _format_timecode(end_seconds),
+                    },
+                )
+            )
+
+        if not entries:
+            return [], []
+
+        entries.sort(key=lambda item: item[0][0])
+        ranges = [item[0] for item in entries]
+        metadata = [item[1] for item in entries]
+        return ranges, metadata
+
     def _normalise_overlays(self, payload: dict[str, Any]) -> dict[str, bool]:
         overlays = {"heatmap": False, "tracking": False, "pose": False}
         options = payload.get("options")
@@ -160,6 +239,7 @@ class VisionProcessor:
         overlays: dict[str, bool],
         fps_override: float | None,
         artifact_dir: Path,
+        clips: Any = None,
     ) -> tuple[Path | None, dict[str, Any], str | None]:
         capture = cv2.VideoCapture(source_uri)
         metadata: dict[str, Any] = {
@@ -185,18 +265,38 @@ class VisionProcessor:
             fps_value = 24.0
         metadata["fps"] = fps_value
 
+        clip_ranges, clip_metadata = self._resolve_clip_ranges(clips, fps_value)
+        metadata["clips_requested"] = clip_metadata
+        metadata["clips_applied"] = []
+
         writer = None
         video_path: Path | None = None
         codec_used: str | None = None
         fallback_used = False
         attempts: list[dict[str, Any]] = []
         frame_index = 0
+        input_index = 0
+        range_index = 0
+        applied_range_indices: set[int] = set()
         overlays_rendered: set[str] = set()
 
         while True:
             success, frame = capture.read()
             if not success:
                 break
+
+            if clip_ranges:
+                while (
+                    range_index < len(clip_ranges)
+                    and input_index >= clip_ranges[range_index][1]
+                ):
+                    range_index += 1
+                if range_index >= len(clip_ranges):
+                    break
+                start_frame, _ = clip_ranges[range_index]
+                if input_index < start_frame:
+                    input_index += 1
+                    continue
 
             if writer is None:
                 height, width = frame.shape[:2]
@@ -227,6 +327,9 @@ class VisionProcessor:
             overlays_rendered.update(applied)
             writer.write(processed_frame)
             frame_index += 1
+            if clip_ranges:
+                applied_range_indices.add(range_index)
+            input_index += 1
 
         capture.release()
         if writer is not None:
@@ -234,6 +337,10 @@ class VisionProcessor:
 
         metadata["frames"] = frame_index
         metadata["overlays_rendered"] = sorted(overlays_rendered)
+        if clip_ranges:
+            metadata["clips_applied"] = [
+                clip_metadata[index] for index in sorted(applied_range_indices)
+            ]
 
         if frame_index == 0:
             if video_path is not None:
