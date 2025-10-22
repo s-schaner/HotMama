@@ -179,6 +179,16 @@ body {
     color: #f8fafc !important;
 }
 
+.video-preview {
+    margin-top: 1.25rem;
+}
+
+.video-preview video {
+    width: 100%;
+    border-radius: 0.75rem;
+    box-shadow: 0 12px 24px rgba(15, 23, 42, 0.12);
+}
+
 .gradio-button.primary {
     font-weight: 600;
     background-color: #1f2937;
@@ -260,6 +270,11 @@ def create_interface(controller: GuiController):
             tone = "danger"
         return f"<div class='alert alert--{tone}'>{escape(message)}</div>"
 
+    def _video_value(path: str | None):
+        if not path:
+            return gr.update(value=None)
+        return str(path)
+
     def _handle_submit(
         upload_path: str | None,
         params_text: str,
@@ -271,6 +286,7 @@ def create_interface(controller: GuiController):
             upload_path, params_text, job_type=job_type_value
         )
         banner = _render_alert(message)
+        source_preview = _video_value(upload_path)
         if not job_id:
             return (
                 gr.update(value=current_job_id),
@@ -279,6 +295,8 @@ def create_interface(controller: GuiController):
                 "",
                 gr.update(),
                 gr.update(),
+                gr.update(value=None),
+                source_preview,
                 current_job_id,
             )
         return (
@@ -288,6 +306,8 @@ def create_interface(controller: GuiController):
             "",
             {},
             gr.update(value=None),
+            gr.update(value=None),
+            source_preview,
             job_id,
         )
 
@@ -295,6 +315,7 @@ def create_interface(controller: GuiController):
         status, message, artifact = controller.refresh_status(job_id_text)
         banner = _render_alert(message)
         artifact_value = artifact or None
+        artifact_preview = _video_value(artifact_value)
         if status.get("status"):
             active = job_id_text
             job_display = job_id_text
@@ -309,8 +330,12 @@ def create_interface(controller: GuiController):
             status,
             banner,
             artifact_value,
+            artifact_preview,
             active,
         )
+
+    def _handle_source_preview(upload_path: str | None):
+        return _video_value(upload_path)
 
     with gr.Blocks(title="HotMama Vision Console", css=CUSTOM_CSS) as demo:
         gr.HTML(HERO_HTML)
@@ -329,6 +354,13 @@ def create_interface(controller: GuiController):
                     label="Vision clip",
                     file_types=[".mp4", ".mov", ".mkv", ".avi"],
                     type="filepath",
+                )
+                source_preview = gr.Video(
+                    label="Source preview",
+                    interactive=False,
+                    height=360,
+                    elem_classes=["video-preview"],
+                    format=None,
                 )
                 job_type = gr.Dropdown(
                     label="Job type",
@@ -387,6 +419,13 @@ def create_interface(controller: GuiController):
                     value={},
                     elem_classes=["status-json"],
                 )
+                artifact_preview = gr.Video(
+                    label="Processed preview",
+                    interactive=False,
+                    height=360,
+                    elem_classes=["video-preview"],
+                    format=None,
+                )
                 artifact_file = gr.File(
                     label="Artifact download",
                     interactive=False,
@@ -395,6 +434,12 @@ def create_interface(controller: GuiController):
                     "Artifacts are mirrored into <code>sessions/gui/downloads</code> for instant download once the worker reports completion.",
                     elem_classes=["form-footer"],
                 )
+
+        upload.upload(
+            _handle_source_preview,
+            inputs=upload,
+            outputs=source_preview,
+        )
 
         submit_btn.click(
             _handle_submit,
@@ -406,6 +451,8 @@ def create_interface(controller: GuiController):
                 status_message,
                 status_json,
                 artifact_file,
+                artifact_preview,
+                source_preview,
                 active_job,
             ],
         )
@@ -418,14 +465,15 @@ def create_interface(controller: GuiController):
                 status_json,
                 status_message,
                 artifact_file,
+                artifact_preview,
                 active_job,
             ],
         )
 
         clear_btn.click(
-            lambda: (gr.update(value=None), "{}", ""),
+            lambda: (gr.update(value=None), "{}", "", gr.update(value=None)),
             inputs=None,
-            outputs=[upload, params, submission_feedback],
+            outputs=[upload, params, submission_feedback, source_preview],
         )
 
     return demo
