@@ -1,3 +1,7 @@
+import pytest
+
+pytest.importorskip("pydantic")
+
 from deploy.gui.app.storage import StorageManager
 
 
@@ -20,9 +24,9 @@ def test_prepare_artifact(tmp_path) -> None:
     download_dir = tmp_path / "downloads"
     storage = StorageManager(upload_dir, download_dir)
 
-    artifact = tmp_path / "result.json"
-    artifact.write_text("{}")
+    artifact = tmp_path / "result.mp4"
+    artifact.write_bytes(b"video")
 
     prepared = storage.prepare_artifact(str(artifact))
     assert prepared.parent == download_dir
-    assert prepared.read_text() == "{}"
+    assert prepared.read_bytes() == b"video"

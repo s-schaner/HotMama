@@ -5,6 +5,10 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from uuid import UUID
 
+import pytest
+
+pytest.importorskip("fastapi")
+
 from fastapi.testclient import TestClient
 
 from deploy.api.app.dependencies import get_job_parser, get_redis

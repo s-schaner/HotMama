@@ -6,6 +6,8 @@ from uuid import UUID, uuid4
 
 import pytest
 
+pytest.importorskip("pydantic")
+
 from deploy.gui.app.client import ApiClient, JobHandle, JobState
 from deploy.gui.app.controller import GuiController
 from deploy.gui.app.storage import StorageManager
@@ -113,8 +115,8 @@ def test_refresh_status_with_artifact(
     video = tmp_path / "clip.mp4"
     video.write_bytes(b"data")
     job_id, _ = gui.submit_job(str(video), "{}")
-    artifact = tmp_path / "result.json"
-    artifact.write_text("{}")
+    artifact = tmp_path / "result.mp4"
+    artifact.write_bytes(b"video")
     client.state = JobState(
         job_id=UUID(job_id),
         status="completed",
@@ -130,7 +132,7 @@ def test_refresh_status_with_artifact(
 
     assert payload["status"] == "completed"
     assert message.startswith("✅")
-    assert artifact_path.endswith("result.json")
+    assert artifact_path.endswith(".mp4") or artifact_path.endswith(".mkv")
 
 
 def test_refresh_status_invalid_id(controller: tuple[GuiController, FakeApiClient]) -> None:
