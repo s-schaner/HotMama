@@ -12,6 +12,9 @@ COPY deploy/gui/requirements.gui.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r /tmp/requirements.txt
 
+COPY deploy /app/deploy
+# Remove the GUI source copied above since the application code is copied separately
+RUN rm -rf /app/deploy/gui
 COPY deploy/gui/app /app/app
 
 EXPOSE 7860
