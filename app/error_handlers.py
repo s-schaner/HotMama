@@ -1,4 +1,5 @@
 """Centralized error handling for the application."""
+
 from __future__ import annotations
 
 import logging
@@ -24,21 +25,27 @@ class ValidationError(HTTPException):
     """Raised when input validation fails."""
 
     def __init__(self, detail: str):
-        super().__init__(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=detail)
+        super().__init__(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=detail
+        )
 
 
 class FileTooLargeError(HTTPException):
     """Raised when uploaded file exceeds size limit."""
 
     def __init__(self, detail: str = "File size exceeds maximum allowed"):
-        super().__init__(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail=detail)
+        super().__init__(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail=detail
+        )
 
 
 class InvalidFileTypeError(HTTPException):
     """Raised when uploaded file type is not allowed."""
 
     def __init__(self, detail: str = "File type not allowed"):
-        super().__init__(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail=detail)
+        super().__init__(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail=detail
+        )
 
 
 class LLMAPIError(HTTPException):
@@ -52,10 +59,14 @@ class VideoProcessingError(HTTPException):
     """Raised when video processing fails."""
 
     def __init__(self, detail: str = "Video processing failed"):
-        super().__init__(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=detail)
+        super().__init__(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=detail
+        )
 
 
-def error_to_response(error: str, detail: str, code: str, status_code: int) -> ErrorResponse:
+def error_to_response(
+    error: str, detail: str, code: str, status_code: int
+) -> ErrorResponse:
     """Create a structured error response."""
     return ErrorResponse(
         error=error,
@@ -65,7 +76,9 @@ def error_to_response(error: str, detail: str, code: str, status_code: int) -> E
     )
 
 
-async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse | HTMLResponse:
+async def http_exception_handler(
+    request: Request, exc: HTTPException
+) -> JSONResponse | HTMLResponse:
     """Handle HTTPException with structured response."""
     error_response = error_to_response(
         error=exc.__class__.__name__,
@@ -76,7 +89,9 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
 
     # Return HTML for HTMX requests, JSON otherwise
     if "HX-Request" in request.headers:
-        html = f'<div class="alert alert-error"><span>{error_response.detail}</span></div>'
+        html = (
+            f'<div class="alert alert-error"><span>{error_response.detail}</span></div>'
+        )
         return HTMLResponse(content=html, status_code=exc.status_code)
 
     return JSONResponse(
@@ -85,7 +100,9 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
     )
 
 
-async def general_exception_handler(request: Request, exc: Exception) -> JSONResponse | HTMLResponse:
+async def general_exception_handler(
+    request: Request, exc: Exception
+) -> JSONResponse | HTMLResponse:
     """Handle general exceptions with structured response."""
     logger.exception("Unhandled exception occurred", exc_info=exc)
 
@@ -102,8 +119,12 @@ async def general_exception_handler(request: Request, exc: Exception) -> JSONRes
 
     # Return HTML for HTMX requests, JSON otherwise
     if "HX-Request" in request.headers:
-        html = f'<div class="alert alert-error"><span>{error_response.detail}</span></div>'
-        return HTMLResponse(content=html, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        html = (
+            f'<div class="alert alert-error"><span>{error_response.detail}</span></div>'
+        )
+        return HTMLResponse(
+            content=html, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

@@ -15,7 +15,6 @@ Tests cover:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict
 
 import pytest
 
@@ -91,9 +90,7 @@ class TestSessionListing:
         # Create multiple sessions
         ids = []
         for i in range(5):
-            session_id = service.create_session(
-                SessionCreate(title=f"Session {i}")
-            )
+            session_id = service.create_session(SessionCreate(title=f"Session {i}"))
             ids.append(session_id)
 
         sessions = service.list_sessions()
@@ -138,15 +135,9 @@ class TestSessionListing:
         """Test searching sessions by venue."""
         service = make_service(tmp_path)
 
-        service.create_session(
-            SessionCreate(title="Match 1", venue="Arena A")
-        )
-        service.create_session(
-            SessionCreate(title="Match 2", venue="Arena B")
-        )
-        service.create_session(
-            SessionCreate(title="Match 3", venue="Arena A")
-        )
+        service.create_session(SessionCreate(title="Match 1", venue="Arena A"))
+        service.create_session(SessionCreate(title="Match 2", venue="Arena B"))
+        service.create_session(SessionCreate(title="Match 3", venue="Arena A"))
 
         results = service.list_sessions(search="Arena A")
         assert len(results) == 2
@@ -193,9 +184,7 @@ class TestSessionLoading:
         assert loaded["event_count"] == 1
         assert loaded["rollup_summary"]["total_events"] == 1
 
-    def test_load_nonexistent_session_raises_error(
-        self, tmp_path: Path
-    ) -> None:
+    def test_load_nonexistent_session_raises_error(self, tmp_path: Path) -> None:
         """Test loading a nonexistent session raises NotFoundError."""
         service = make_service(tmp_path)
 
@@ -244,9 +233,7 @@ class TestSessionUpdates:
         assert loaded["session"].meta["new"] == "data"
         assert loaded["session"].meta["updated"] is True
 
-    def test_update_nonexistent_session_raises_error(
-        self, tmp_path: Path
-    ) -> None:
+    def test_update_nonexistent_session_raises_error(self, tmp_path: Path) -> None:
         """Test updating a nonexistent session raises NotFoundError."""
         service = make_service(tmp_path)
 
@@ -301,9 +288,7 @@ class TestSessionDeletion:
         backups = list(backup_dir.glob(f"{session_id}_*.json"))
         assert len(backups) > 0
 
-    def test_delete_nonexistent_session_raises_error(
-        self, tmp_path: Path
-    ) -> None:
+    def test_delete_nonexistent_session_raises_error(self, tmp_path: Path) -> None:
         """Test deleting a nonexistent session raises NotFoundError."""
         service = make_service(tmp_path)
 
@@ -395,8 +380,12 @@ class TestSessionExport:
             session_id,
             clip_id,
             [
-                EventIn(t_sec=1.0, event_type="serve", actor_team="A", actor_number="10"),
-                EventIn(t_sec=5.0, event_type="attack", actor_team="B", actor_number="7"),
+                EventIn(
+                    t_sec=1.0, event_type="serve", actor_team="A", actor_number="10"
+                ),
+                EventIn(
+                    t_sec=5.0, event_type="attack", actor_team="B", actor_number="7"
+                ),
             ],
         )
 

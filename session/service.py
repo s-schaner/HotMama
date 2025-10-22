@@ -56,7 +56,13 @@ class SessionService:
         with self._connection() as conn:
             conn.execute(
                 "INSERT INTO sessions(id, created_utc, title, venue, meta) VALUES (?, ?, ?, ?, ?)",
-                (session_id, created_utc, data.title, data.venue, json.dumps(data.meta)),
+                (
+                    session_id,
+                    created_utc,
+                    data.title,
+                    data.venue,
+                    json.dumps(data.meta),
+                ),
             )
             for side in ("A", "B"):
                 conn.execute(
@@ -94,7 +100,9 @@ class SessionService:
                     LIMIT ? OFFSET ?
                 """
                 search_term = f"%{search}%"
-                rows = conn.execute(query, (search_term, search_term, search_term, limit, offset)).fetchall()
+                rows = conn.execute(
+                    query, (search_term, search_term, search_term, limit, offset)
+                ).fetchall()
             else:
                 query = """
                     SELECT id, created_utc, title, venue, meta
@@ -124,7 +132,9 @@ class SessionService:
             if updated == 0:
                 raise NotFoundError("Team not found")
 
-    def set_roster(self, session_id: str, side: str, entries: List[schemas.RosterEntry]) -> None:
+    def set_roster(
+        self, session_id: str, side: str, entries: List[schemas.RosterEntry]
+    ) -> None:
         with self._connection() as conn:
             team = conn.execute(
                 "SELECT id FROM teams WHERE session_id=? AND side=?",
@@ -145,11 +155,19 @@ class SessionService:
         with self._connection() as conn:
             conn.execute(
                 "INSERT INTO clips(id, session_id, path, duration_sec, meta) VALUES (?, ?, ?, ?, ?)",
-                (clip_id, session_id, clip.path, clip.duration_sec, json.dumps(clip.meta)),
+                (
+                    clip_id,
+                    session_id,
+                    clip.path,
+                    clip.duration_sec,
+                    json.dumps(clip.meta),
+                ),
             )
         return clip_id
 
-    def add_events(self, session_id: str, clip_id: str, events: List[schemas.EventIn]) -> None:
+    def add_events(
+        self, session_id: str, clip_id: str, events: List[schemas.EventIn]
+    ) -> None:
         with self._connection() as conn:
             for event in events:
                 conn.execute(
@@ -207,7 +225,9 @@ class SessionService:
             ).fetchall()
             events_path = output_dir / f"{session_id}_events.csv"
             with events_path.open("w", encoding="utf-8") as f:
-                f.write("clip_id,t_sec,event_type,actor_team,actor_number,actor_name,payload\n")
+                f.write(
+                    "clip_id,t_sec,event_type,actor_team,actor_number,actor_name,payload\n"
+                )
                 for row in events_rows:
                     f.write(
                         f"{row['clip_id']},{row['t_sec']},{row['event_type']},{row['actor_team'] or ''},{row['actor_number'] or ''},{row['actor_resolved_name'] or ''},{row['payload']}\n"

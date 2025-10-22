@@ -23,7 +23,11 @@ def main() -> None:
     os.environ.setdefault("VOLLEYSENSE_SESSIONS", str(config.sessions_dir))
     LOGGER.info(
         "Starting VolleySense FastAPI server",
-        extra={"host": args.host, "port": args.port, "sessions_dir": str(config.sessions_dir)},
+        extra={
+            "host": args.host,
+            "port": args.port,
+            "sessions_dir": str(config.sessions_dir),
+        },
     )
 
     run_server(host=args.host, port=args.port)

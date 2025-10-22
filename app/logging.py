@@ -20,7 +20,9 @@ def configure_logging(log_dir: Path) -> None:
     stream_handler.setFormatter(formatter)
     root_logger.addHandler(stream_handler)
 
-    file_handler = RotatingFileHandler(log_path, maxBytes=5 * 1024 * 1024, backupCount=5)
+    file_handler = RotatingFileHandler(
+        log_path, maxBytes=5 * 1024 * 1024, backupCount=5
+    )
     file_handler.setFormatter(formatter)
     root_logger.addHandler(file_handler)
 

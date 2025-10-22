@@ -18,6 +18,7 @@ class DetectionResult(dict):
     - classes: List[int] - Class IDs for each detection
     - class_names: List[str] - Human-readable class names
     """
+
     pass
 
 
@@ -80,7 +81,9 @@ class DetectorRunner:
                 self.model.to(self.device)
 
             self._initialized = True
-            logger.info(f"YOLO model loaded successfully on device: {self.model.device}")
+            logger.info(
+                f"YOLO model loaded successfully on device: {self.model.device}"
+            )
 
         except ImportError as e:
             logger.error(
@@ -135,12 +138,26 @@ class DetectorRunner:
             # Extract results
             if len(detections) > 0:
                 det = detections[0]  # Single image
-                boxes = det.boxes.xyxy.cpu().numpy().tolist() if det.boxes is not None else []
-                scores = det.boxes.conf.cpu().numpy().tolist() if det.boxes is not None else []
-                classes = det.boxes.cls.cpu().numpy().astype(int).tolist() if det.boxes is not None else []
+                boxes = (
+                    det.boxes.xyxy.cpu().numpy().tolist()
+                    if det.boxes is not None
+                    else []
+                )
+                scores = (
+                    det.boxes.conf.cpu().numpy().tolist()
+                    if det.boxes is not None
+                    else []
+                )
+                classes = (
+                    det.boxes.cls.cpu().numpy().astype(int).tolist()
+                    if det.boxes is not None
+                    else []
+                )
 
                 # Get class names
-                class_names = [det.names[cls_id] for cls_id in classes] if det.names else []
+                class_names = (
+                    [det.names[cls_id] for cls_id in classes] if det.names else []
+                )
 
                 results.append(
                     DetectionResult(
@@ -204,9 +221,17 @@ class DetectorRunner:
         )
 
         for det in detections:
-            boxes = det.boxes.xyxy.cpu().numpy().tolist() if det.boxes is not None else []
-            scores = det.boxes.conf.cpu().numpy().tolist() if det.boxes is not None else []
-            classes = det.boxes.cls.cpu().numpy().astype(int).tolist() if det.boxes is not None else []
+            boxes = (
+                det.boxes.xyxy.cpu().numpy().tolist() if det.boxes is not None else []
+            )
+            scores = (
+                det.boxes.conf.cpu().numpy().tolist() if det.boxes is not None else []
+            )
+            classes = (
+                det.boxes.cls.cpu().numpy().astype(int).tolist()
+                if det.boxes is not None
+                else []
+            )
             class_names = [det.names[cls_id] for cls_id in classes] if det.names else []
 
             results_list.append(

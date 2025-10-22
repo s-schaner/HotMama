@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Dict, Iterable, List, Optional, Union, Tuple
+from typing import Dict, Iterable, List, Optional, Union
 import numpy as np
 
 logger = logging.getLogger(__name__)
@@ -24,6 +24,7 @@ class PoseResult(dict):
         - confidence: float - Detection confidence (0.0-1.0)
     - pose_landmarks: Optional - Raw pose landmarks from detector
     """
+
     pass
 
 
@@ -39,15 +40,39 @@ class PoseEstimator:
 
     # MediaPipe landmark names (33 keypoints)
     MEDIAPIPE_LANDMARKS = [
-        "nose", "left_eye_inner", "left_eye", "left_eye_outer",
-        "right_eye_inner", "right_eye", "right_eye_outer",
-        "left_ear", "right_ear", "mouth_left", "mouth_right",
-        "left_shoulder", "right_shoulder", "left_elbow", "right_elbow",
-        "left_wrist", "right_wrist", "left_pinky", "right_pinky",
-        "left_index", "right_index", "left_thumb", "right_thumb",
-        "left_hip", "right_hip", "left_knee", "right_knee",
-        "left_ankle", "right_ankle", "left_heel", "right_heel",
-        "left_foot_index", "right_foot_index",
+        "nose",
+        "left_eye_inner",
+        "left_eye",
+        "left_eye_outer",
+        "right_eye_inner",
+        "right_eye",
+        "right_eye_outer",
+        "left_ear",
+        "right_ear",
+        "mouth_left",
+        "mouth_right",
+        "left_shoulder",
+        "right_shoulder",
+        "left_elbow",
+        "right_elbow",
+        "left_wrist",
+        "right_wrist",
+        "left_pinky",
+        "right_pinky",
+        "left_index",
+        "right_index",
+        "left_thumb",
+        "right_thumb",
+        "left_hip",
+        "right_hip",
+        "left_knee",
+        "right_knee",
+        "left_ankle",
+        "right_ankle",
+        "left_heel",
+        "right_heel",
+        "left_foot_index",
+        "right_foot_index",
     ]
 
     def __init__(
@@ -96,6 +121,7 @@ class PoseEstimator:
         try:
             if self.model_type == "mediapipe":
                 import mediapipe as mp
+
                 mp_pose = mp.solutions.pose
 
                 self.pose = mp_pose.Pose(
@@ -111,6 +137,7 @@ class PoseEstimator:
 
             elif self.model_type == "yolov8-pose":
                 from ultralytics import YOLO
+
                 self.pose = YOLO("yolov8n-pose.pt")  # Can use yolov8s/m/l/x-pose
                 logger.info("YOLOv8-Pose initialized successfully")
 
@@ -124,12 +151,16 @@ class PoseEstimator:
 
         except ImportError as e:
             if self.model_type == "mediapipe":
-                logger.error("mediapipe not installed. Install with: pip install mediapipe")
+                logger.error(
+                    "mediapipe not installed. Install with: pip install mediapipe"
+                )
                 raise ImportError(
                     "MediaPipe pose requires mediapipe. Install with: pip install mediapipe"
                 ) from e
             elif self.model_type == "yolov8-pose":
-                logger.error("ultralytics not installed. Install with: pip install ultralytics")
+                logger.error(
+                    "ultralytics not installed. Install with: pip install ultralytics"
+                )
                 raise ImportError(
                     "YOLO pose requires ultralytics. Install with: pip install ultralytics"
                 ) from e
@@ -224,13 +255,15 @@ class PoseEstimator:
                         offset_y=y1,
                     )
 
-                    results.append(PoseResult(
-                        frame_idx=frame_idx,
-                        person_id=track_ids[i] if track_ids else i,
-                        bbox=bbox,
-                        keypoints=keypoints,
-                        pose_landmarks=pose_results.pose_landmarks,
-                    ))
+                    results.append(
+                        PoseResult(
+                            frame_idx=frame_idx,
+                            person_id=track_ids[i] if track_ids else i,
+                            bbox=bbox,
+                            keypoints=keypoints,
+                            pose_landmarks=pose_results.pose_landmarks,
+                        )
+                    )
         else:
             # Run pose on full frame
             pose_results = self.pose.process(frame_rgb)
@@ -240,13 +273,15 @@ class PoseEstimator:
                     pose_results.pose_landmarks.landmark
                 )
 
-                results.append(PoseResult(
-                    frame_idx=frame_idx,
-                    person_id=0,
-                    bbox=[0, 0, frame.shape[1], frame.shape[0]],
-                    keypoints=keypoints,
-                    pose_landmarks=pose_results.pose_landmarks,
-                ))
+                results.append(
+                    PoseResult(
+                        frame_idx=frame_idx,
+                        person_id=0,
+                        bbox=[0, 0, frame.shape[1], frame.shape[0]],
+                        keypoints=keypoints,
+                        pose_landmarks=pose_results.pose_landmarks,
+                    )
+                )
 
         return results
 
@@ -285,12 +320,16 @@ class PoseEstimator:
                     # Parse keypoints (YOLO has 17 COCO keypoints)
                     keypoints = self._parse_yolo_keypoints(kpts, conf)
 
-                    results.append(PoseResult(
-                        frame_idx=frame_idx,
-                        person_id=track_ids[i] if track_ids and i < len(track_ids) else i,
-                        bbox=bbox,
-                        keypoints=keypoints,
-                    ))
+                    results.append(
+                        PoseResult(
+                            frame_idx=frame_idx,
+                            person_id=(
+                                track_ids[i] if track_ids and i < len(track_ids) else i
+                            ),
+                            bbox=bbox,
+                            keypoints=keypoints,
+                        )
+                    )
 
         return results
 
@@ -304,14 +343,20 @@ class PoseEstimator:
         keypoints = []
 
         for idx, landmark in enumerate(landmarks):
-            keypoints.append({
-                "name": self.MEDIAPIPE_LANDMARKS[idx] if idx < len(self.MEDIAPIPE_LANDMARKS) else f"point_{idx}",
-                "x": landmark.x + offset_x,
-                "y": landmark.y + offset_y,
-                "z": landmark.z,
-                "visibility": landmark.visibility,
-                "confidence": landmark.visibility,  # MediaPipe uses visibility as confidence
-            })
+            keypoints.append(
+                {
+                    "name": (
+                        self.MEDIAPIPE_LANDMARKS[idx]
+                        if idx < len(self.MEDIAPIPE_LANDMARKS)
+                        else f"point_{idx}"
+                    ),
+                    "x": landmark.x + offset_x,
+                    "y": landmark.y + offset_y,
+                    "z": landmark.z,
+                    "visibility": landmark.visibility,
+                    "confidence": landmark.visibility,  # MediaPipe uses visibility as confidence
+                }
+            )
 
         return keypoints
 
@@ -319,29 +364,48 @@ class PoseEstimator:
         """Parse YOLO keypoints into standardized format."""
         # YOLO COCO keypoint names (17 keypoints)
         YOLO_KEYPOINT_NAMES = [
-            "nose", "left_eye", "right_eye", "left_ear", "right_ear",
-            "left_shoulder", "right_shoulder", "left_elbow", "right_elbow",
-            "left_wrist", "right_wrist", "left_hip", "right_hip",
-            "left_knee", "right_knee", "left_ankle", "right_ankle",
+            "nose",
+            "left_eye",
+            "right_eye",
+            "left_ear",
+            "right_ear",
+            "left_shoulder",
+            "right_shoulder",
+            "left_elbow",
+            "right_elbow",
+            "left_wrist",
+            "right_wrist",
+            "left_hip",
+            "right_hip",
+            "left_knee",
+            "right_knee",
+            "left_ankle",
+            "right_ankle",
         ]
 
         keypoints = []
 
         for idx, (xy, c) in enumerate(zip(kpts, conf)):
-            keypoints.append({
-                "name": YOLO_KEYPOINT_NAMES[idx] if idx < len(YOLO_KEYPOINT_NAMES) else f"point_{idx}",
-                "x": float(xy[0]),
-                "y": float(xy[1]),
-                "z": 0.0,
-                "visibility": float(c),
-                "confidence": float(c),
-            })
+            keypoints.append(
+                {
+                    "name": (
+                        YOLO_KEYPOINT_NAMES[idx]
+                        if idx < len(YOLO_KEYPOINT_NAMES)
+                        else f"point_{idx}"
+                    ),
+                    "x": float(xy[0]),
+                    "y": float(xy[1]),
+                    "z": 0.0,
+                    "visibility": float(c),
+                    "confidence": float(c),
+                }
+            )
 
         return keypoints
 
     def close(self):
         """Release resources."""
-        if self.pose is not None and hasattr(self.pose, 'close'):
+        if self.pose is not None and hasattr(self.pose, "close"):
             self.pose.close()
         self._initialized = False
         logger.info("PoseEstimator closed")

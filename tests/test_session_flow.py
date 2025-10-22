@@ -27,14 +27,21 @@ def test_session_lifecycle(tmp_path: Path) -> None:
     service.set_roster(
         session_id,
         "A",
-        [RosterEntry(number="12", player_name="Alice"), RosterEntry(number="3", player_name="Bea")],
+        [
+            RosterEntry(number="12", player_name="Alice"),
+            RosterEntry(number="3", player_name="Bea"),
+        ],
     )
 
-    clip_id = service.add_clip(session_id, ClipCreate(path="clip.mp4", duration_sec=12.3))
+    clip_id = service.add_clip(
+        session_id, ClipCreate(path="clip.mp4", duration_sec=12.3)
+    )
     events = [
         EventIn(t_sec=1.0, event_type="serve", actor_team="A", actor_number="12"),
         EventIn(t_sec=2.5, event_type="attack", actor_team="B", actor_number="8"),
-        EventIn(t_sec=4.0, event_type="ball_down_in", actor_team="A", actor_number="12"),
+        EventIn(
+            t_sec=4.0, event_type="ball_down_in", actor_team="A", actor_number="12"
+        ),
     ]
     service.add_events(session_id, clip_id, events)
 

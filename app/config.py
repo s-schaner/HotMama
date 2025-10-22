@@ -10,13 +10,21 @@ from typing import Any, Dict
 class AppConfig:
     """Configuration flags and directories for the VolleySense app."""
 
-    root_dir: Path = field(default_factory=lambda: Path(os.environ.get("VOLLEYSENSE_ROOT", Path.cwd())))
+    root_dir: Path = field(
+        default_factory=lambda: Path(os.environ.get("VOLLEYSENSE_ROOT", Path.cwd()))
+    )
     data_dir: Path = field(init=False)
     sessions_dir: Path = field(init=False)
     db_url: str = field(init=False)
-    hf_endpoint: str | None = field(default_factory=lambda: os.environ.get("HF_OPENAI_ENDPOINT"))
-    llm_model: str = field(default_factory=lambda: os.environ.get("VOLLEYSENSE_LLM_MODEL", "gpt-4o-mini"))
-    auth_token: str | None = field(default_factory=lambda: os.environ.get("VOLLEYSENSE_AUTH_TOKEN"))
+    hf_endpoint: str | None = field(
+        default_factory=lambda: os.environ.get("HF_OPENAI_ENDPOINT")
+    )
+    llm_model: str = field(
+        default_factory=lambda: os.environ.get("VOLLEYSENSE_LLM_MODEL", "gpt-4o-mini")
+    )
+    auth_token: str | None = field(
+        default_factory=lambda: os.environ.get("VOLLEYSENSE_AUTH_TOKEN")
+    )
     extra: Dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:

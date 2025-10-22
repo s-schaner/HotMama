@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from typing import Any
 
 import gradio as gr
 
@@ -21,10 +20,14 @@ class DummyPlugin:
     def on_session_close(self, session_id: str) -> None:
         pass
 
-    def on_clip_ingested(self, session_id: str, clip_id: str, clip_path: str) -> HookResult:
+    def on_clip_ingested(
+        self, session_id: str, clip_id: str, clip_path: str
+    ) -> HookResult:
         return HookResult()
 
-    def on_events_parsed(self, session_id: str, clip_id: str, events: list[dict]) -> HookResult:
+    def on_events_parsed(
+        self, session_id: str, clip_id: str, events: list[dict]
+    ) -> HookResult:
         return HookResult()
 
     def get_ui_blocks(self):

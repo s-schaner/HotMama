@@ -112,7 +112,9 @@ def main() -> int:
 
     exit_code = _launch_uvicorn(host, port, env, logger)
     if exit_code != 0:
-        logger.error("VolleySense server terminated unexpectedly (exit code %s)", exit_code)
+        logger.error(
+            "VolleySense server terminated unexpectedly (exit code %s)", exit_code
+        )
         crash_log = logs_dir / "container-crash.log"
         crash_log.write_text(
             f"Server crashed at {datetime.utcnow().isoformat()}Z with exit code {exit_code}\n",

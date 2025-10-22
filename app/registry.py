@@ -5,7 +5,7 @@ import inspect
 import logging
 from pathlib import Path
 from types import ModuleType
-from typing import Dict, List
+from typing import Dict
 
 from app.errors import PluginError
 from plugins.plugins_api import AppContext, Plugin, SafePluginWrapper
@@ -24,7 +24,7 @@ def discover_plugins(root: Path, ctx: AppContext) -> Dict[str, SafePluginWrapper
         module_name = f"plugins.{plugin_dir.name}.plugin"
         try:
             module = importlib.import_module(module_name)
-        except Exception as exc:
+        except Exception:
             LOGGER.exception("Failed to import plugin %s", module_name)
             continue
         plugin = _resolve_plugin(module)
@@ -33,7 +33,7 @@ def discover_plugins(root: Path, ctx: AppContext) -> Dict[str, SafePluginWrapper
         wrapped = SafePluginWrapper(plugin, getattr(plugin, "name", plugin_dir.name))
         try:
             wrapped.on_register(ctx)
-        except Exception as exc:
+        except Exception:
             LOGGER.exception("Plugin %s failed during registration", wrapped.name)
             continue
         plugins[wrapped.name] = wrapped

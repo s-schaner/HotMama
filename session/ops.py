@@ -14,7 +14,7 @@ import json
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
 from session import schemas
 
@@ -147,7 +147,9 @@ class RollupComputer:
                 rollup["player_stats"][player_key]["team"] = event.actor_team
                 rollup["player_stats"][player_key]["number"] = event.actor_number
                 if event.actor_resolved_name:
-                    rollup["player_stats"][player_key]["name"] = event.actor_resolved_name
+                    rollup["player_stats"][player_key][
+                        "name"
+                    ] = event.actor_resolved_name
 
         # Convert defaultdicts to regular dicts for JSON serialization
         rollup["event_types"] = dict(rollup["event_types"])
@@ -185,11 +187,7 @@ class RollupComputer:
         # Group events by type
         attacks = [e for e in events if e.event_type == "attack"]
         serves = [e for e in events if e.event_type == "serve"]
-        defensive = [
-            e
-            for e in events
-            if e.event_type in {"dig", "block", "receive"}
-        ]
+        defensive = [e for e in events if e.event_type in {"dig", "block", "receive"}]
 
         # Attack efficiency by player
         attack_by_player = defaultdict(list)
@@ -199,15 +197,9 @@ class RollupComputer:
                 attack_by_player[player_key].append(attack)
 
         for player_key, player_attacks in attack_by_player.items():
-            kills = sum(
-                1
-                for a in player_attacks
-                if a.payload.get("outcome") == "kill"
-            )
+            kills = sum(1 for a in player_attacks if a.payload.get("outcome") == "kill")
             errors = sum(
-                1
-                for a in player_attacks
-                if a.payload.get("outcome") == "error"
+                1 for a in player_attacks if a.payload.get("outcome") == "error"
             )
             total = len(player_attacks)
             efficiency = (kills - errors) / total if total > 0 else 0
@@ -226,15 +218,9 @@ class RollupComputer:
                 serve_by_player[player_key].append(serve)
 
         for player_key, player_serves in serve_by_player.items():
-            aces = sum(
-                1
-                for s in player_serves
-                if s.payload.get("outcome") == "ace"
-            )
+            aces = sum(1 for s in player_serves if s.payload.get("outcome") == "ace")
             errors = sum(
-                1
-                for s in player_serves
-                if s.payload.get("outcome") == "error"
+                1 for s in player_serves if s.payload.get("outcome") == "error"
             )
             total = len(player_serves)
             metrics["serve_performance"][player_key] = {
@@ -279,7 +265,9 @@ class RollupComputer:
             # Team stats
             if entry.team_side:
                 summary["teams"][entry.team_side]["events"] += entry.count
-                summary["teams"][entry.team_side]["types"][entry.event_type] = entry.count
+                summary["teams"][entry.team_side]["types"][
+                    entry.event_type
+                ] = entry.count
 
             # Player stats
             if entry.team_side and entry.number:
@@ -355,11 +343,13 @@ class SessionBackup:
 
         for snapshot_file in self.backup_dir.glob(pattern):
             timestamp_str = snapshot_file.stem.split("_", 1)[1]
-            snapshots.append({
-                "path": str(snapshot_file),
-                "timestamp": timestamp_str,
-                "size": snapshot_file.stat().st_size,
-            })
+            snapshots.append(
+                {
+                    "path": str(snapshot_file),
+                    "timestamp": timestamp_str,
+                    "size": snapshot_file.stat().st_size,
+                }
+            )
 
         return sorted(snapshots, key=lambda x: x["timestamp"], reverse=True)
 

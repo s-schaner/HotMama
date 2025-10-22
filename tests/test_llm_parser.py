@@ -20,7 +20,9 @@ def test_parse_clean_json():
 
 
 def test_parse_inner_json():
-    messy = "Analysis: {\"rally_state\": \"rally\", \"who_won\": null, \"timeline\": []} Thanks!"
+    messy = (
+        'Analysis: {"rally_state": "rally", "who_won": null, "timeline": []} Thanks!'
+    )
     result = parse_rally(messy)
     assert result.rally_state == "rally"
 

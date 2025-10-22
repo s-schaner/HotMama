@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Iterable, List, Dict, Optional, Tuple
+from typing import List, Dict, Tuple
 import numpy as np
 from collections import defaultdict
 
@@ -23,6 +23,7 @@ class Track(dict):
     - time_since_update: int - Frames since last detection
     - velocity: Tuple[float, float] - Velocity (dx, dy) in pixels/frame
     """
+
     pass
 
 
@@ -130,19 +131,29 @@ class PlayerTracker:
                     s = score[i] if isinstance(score, list) else score
                     c = class_id[i] if isinstance(class_id, list) else class_id
                     cn = class_name[i] if isinstance(class_name, list) else class_name
-                    parsed.append({
-                        "bbox": box,
-                        "score": s,
-                        "class_id": c,
-                        "class_name": cn,
-                    })
+                    parsed.append(
+                        {
+                            "bbox": box,
+                            "score": s,
+                            "class_id": c,
+                            "class_name": cn,
+                        }
+                    )
             elif bbox:
-                parsed.append({
-                    "bbox": bbox,
-                    "score": score if not isinstance(score, list) else score[0],
-                    "class_id": class_id if not isinstance(class_id, list) else class_id[0],
-                    "class_name": class_name if not isinstance(class_name, list) else class_name[0],
-                })
+                parsed.append(
+                    {
+                        "bbox": bbox,
+                        "score": score if not isinstance(score, list) else score[0],
+                        "class_id": (
+                            class_id if not isinstance(class_id, list) else class_id[0]
+                        ),
+                        "class_name": (
+                            class_name
+                            if not isinstance(class_name, list)
+                            else class_name[0]
+                        ),
+                    }
+                )
 
         return parsed
 
@@ -265,10 +276,7 @@ class PlayerTracker:
 
     def _prune_tracks(self):
         """Remove tracks that have been lost for too long."""
-        self.tracks = [
-            t for t in self.tracks
-            if t["time_since_update"] < self.max_age
-        ]
+        self.tracks = [t for t in self.tracks if t["time_since_update"] < self.max_age]
 
     def _get_confirmed_tracks(self) -> List[Track]:
         """Get tracks that have enough hits to be confirmed."""
@@ -277,17 +285,19 @@ class PlayerTracker:
         for track in self.tracks:
             # Track must have minimum hits and recent update
             if track["hits"] >= self.min_hits or track["age"] < self.min_hits:
-                confirmed.append(Track(
-                    track_id=track["track_id"],
-                    bbox=track["bbox"],
-                    score=track["score"],
-                    class_id=track["class_id"],
-                    class_name=track["class_name"],
-                    age=track["age"],
-                    hits=track["hits"],
-                    time_since_update=track["time_since_update"],
-                    velocity=track["velocity"],
-                ))
+                confirmed.append(
+                    Track(
+                        track_id=track["track_id"],
+                        bbox=track["bbox"],
+                        score=track["score"],
+                        class_id=track["class_id"],
+                        class_name=track["class_name"],
+                        age=track["age"],
+                        hits=track["hits"],
+                        time_since_update=track["time_since_update"],
+                        velocity=track["velocity"],
+                    )
+                )
 
         return confirmed
 
@@ -322,6 +332,7 @@ class PlayerTracker:
         """Initialize Kalman filter for track (requires filterpy)."""
         try:
             from filterpy.kalman import KalmanFilter
+
             kf = KalmanFilter(dim_x=7, dim_z=4)
             # [x, y, s, r, vx, vy, vs]
             # x, y: center, s: scale (area), r: aspect ratio
