@@ -24,11 +24,12 @@ def launch() -> None:
 
     controller = build_controller(settings)
     app = create_interface(controller)
-    app.queue(concurrency_count=2)
+    app.queue(default_concurrency_limit=2)
     try:
         app.launch(
             server_name=settings.host,
             server_port=settings.port,
+            max_threads=2,
             share=False,
             inbrowser=False,
             show_error=True,

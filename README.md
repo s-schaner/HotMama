@@ -65,17 +65,19 @@ pip install fastapi[all] pytest ruff black mypy  # development extras
 
 ### Local Docker Compose
 
-```bash
-docker compose up -d --build
-docker compose logs -f worker-vision-cpu
-# GUI available at http://localhost:7860 once services are healthy
-```
-
-GPU profile (requires NVIDIA Container Toolkit):
+Launch helpers are provided under `tools/` so you can spin up the full stack with a single command:
 
 ```bash
-docker compose --profile gpu up -d --build
+./tools/launch_cpu.sh
 ```
+
+The CPU script builds the images, exports `PROFILE=cpu`, and brings up the API, Redis, worker, and GUI services. To exercise the CUDA worker, use the GPU variant (requires NVIDIA Container Toolkit):
+
+```bash
+./tools/launch_gpu.sh
+```
+
+Both scripts print follow-up log commands once the containers are running. You can still call `docker compose` directly if you prefer manual control.
 
 ### Testing & Quality Gates
 
@@ -91,6 +93,17 @@ Run the integration smoke test (uses Docker):
 ```bash
 ./tools/test_compose_smoke.sh
 ```
+
+### Elegant Shutdown
+
+Allow in-flight jobs to finish, then stop the stack cleanly:
+
+```bash
+docker compose stop
+docker compose down --remove-orphans
+```
+
+`docker compose stop` sends a `SIGTERM` to each service so workers can flush logs and close Redis connections. `docker compose down --remove-orphans` then tears down the containers and network once everything has exited. If you launched with the GPU profile, repeat the commands with `--profile gpu` to ensure the CUDA worker shuts down gracefully.
 
 ## 📡 API Quick Reference
 
