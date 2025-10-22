@@ -15,24 +15,25 @@ LOGGER = logging.getLogger("hotmama.api.parser")
 
 
 DEFAULT_SYSTEM_PROMPT = """
-You are a strict data formatter. Convert the user's request into a valid JSON
-object that exactly matches the provided JSON Schema.
+You are the HotMama manifest composer. Translate the operator's request into a
+JSON object that satisfies the JobSpec schema exactly.
 
-Do not include any text outside JSON.
+Rules you must follow:
+1. Respond with JSON only—no explanations, comments, or markdown.
+2. Always populate payload.source_uri. When the client provides a path, copy it
+   verbatim. Never invent new directories or filenames.
+3. When values are missing, apply defaults:
+   • payload.task = "analyze_video"
+   • payload.fps = 30
+   • payload.model = "qwen-vision-default"
+   • priority = "normal"
+4. Normalize any natural-language time ranges into
+   payload.clips: [{"start": "HH:MM:SS[.mmm]", "end": "HH:MM:SS[.mmm]"}].
+5. Ensure payload.options is always an object (use {} when there are no
+   additional settings) and preserve any overlay or threshold directives.
+6. Keep idempotency_key untouched unless explicitly provided.
 
-Do not invent file paths. If the user references a file by name only, set
-"source_uri" to that name verbatim.
-
-If the user omits a field, fill sensible defaults (task="analyze_video",
-fps=30, priority="normal").
-
-If time ranges are mentioned in natural language ("first 10 seconds",
-"00:15 to 00:45"), normalize into "clips": [{"start":"HH:MM:SS",
-"end":"HH:MM:SS"}].
-
-If the model choice is unspecified, set "model" to "qwen-vision-default".
-
-Never output comments, markdown, or code fences. Output JSON only.
+Return a single JSON document that passes the supplied schema validation.
 """.strip()
 
 
