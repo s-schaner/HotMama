@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime
 from types import SimpleNamespace
 from uuid import UUID, uuid4
@@ -15,7 +16,7 @@ from deploy.gui.app.storage import StorageManager
 
 class FakeApiClient:
     def __init__(self) -> None:
-        self.submissions: list[tuple[str, dict, str]] = []
+        self.submissions: list[tuple[str, dict, list[str], str]] = []
         self.state: JobState | None = None
         self.last_task: str | None = None
 
@@ -23,11 +24,13 @@ class FakeApiClient:
         self,
         source_uri: str,
         parameters: dict | None = None,
-        job_type: str = "vision.process",
+        job_type: str = "pipeline.analysis",
+        overlays: Sequence[str] | None = None,
         priority: str | None = None,
     ) -> JobHandle:
         job_id = uuid4()
         task = ApiClient._normalise_task(job_type)
+        overlay_list = ApiClient._normalise_overlay_modes(overlays) or []
         handle = JobHandle(
             job_id=job_id,
             status="queued",
@@ -37,7 +40,7 @@ class FakeApiClient:
             idempotency_key="test",
             task=task,
         )
-        self.submissions.append((source_uri, parameters or {}, task))
+        self.submissions.append((source_uri, parameters or {}, overlay_list, task))
         self.last_task = task
         self.state = JobState(
             job_id=job_id,
@@ -76,11 +79,16 @@ def test_submit_job_success(controller: tuple[GuiController, FakeApiClient], tmp
     video = tmp_path / "clip.mp4"
     video.write_bytes(b"data")
 
-    job_id, message = gui.submit_job(str(video), "{}")
+    job_id, message = gui.submit_job(
+        str(video),
+        "{}",
+        overlay_modes=["overlay.activity_heatmap"],
+    )
 
     assert UUID(job_id)
     assert "queued" in message
     assert client.submissions
+    assert client.submissions[0][2] == ["heatmap"]
     assert "Task: analyze_video" in message
     assert "Priority: normal" in message
 
@@ -92,10 +100,16 @@ def test_submit_job_with_custom_type(
     video = tmp_path / "clip.mp4"
     video.write_bytes(b"data")
 
-    job_id, _ = gui.submit_job(str(video), "{}", job_type="vision.segment")
+    job_id, _ = gui.submit_job(
+        str(video),
+        "{}",
+        job_type="pipeline.segment",
+        overlay_modes=["overlay.object_tracking", "overlay.pose_skeleton"],
+    )
 
     assert UUID(job_id)
     assert client.last_task == "extract_clips"
+    assert client.submissions[0][2] == ["tracking", "pose"]
 
 
 def test_submit_job_invalid_json(controller: tuple[GuiController, FakeApiClient], tmp_path) -> None:

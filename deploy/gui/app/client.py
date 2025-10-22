@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -18,12 +20,27 @@ _VALID_TASKS = {
     "detect_events",
 }
 
+_TASK_DEFAULT_OPTIONS: dict[str, dict[str, Any]] = {
+    "generate_heatmap": {"overlays": ["heatmap"]},
+}
+
 _TASK_ALIASES = {
+    "pipeline.analysis": "analyze_video",
+    "pipeline.segment": "extract_clips",
+    "pipeline.events": "detect_events",
     "vision.process": "analyze_video",
     "vision.segment": "extract_clips",
     "vision.heatmap": "generate_heatmap",
     "vision.events": "detect_events",
 }
+
+_OVERLAY_ALIASES = {
+    "overlay.activity_heatmap": "heatmap",
+    "overlay.object_tracking": "tracking",
+    "overlay.pose_skeleton": "pose",
+}
+
+_KNOWN_OVERLAYS = {"heatmap", "tracking", "pose"}
 
 
 @dataclass(slots=True)
@@ -84,15 +101,19 @@ class ApiClient:
         self,
         source_uri: str,
         parameters: dict[str, Any] | None = None,
-        job_type: str = "vision.process",
+        job_type: str = "pipeline.analysis",
+        overlays: Sequence[str] | None = None,
         priority: str | None = None,
     ) -> JobHandle:
         task = self._normalise_task(job_type)
+        options = self._build_options(
+            task=task, parameters=parameters, overlays=overlays
+        )
         body: dict[str, Any] = {
             "payload": {
                 "task": task,
                 "source_uri": source_uri,
-                "options": parameters or {},
+                "options": options,
             }
         }
         if priority:
@@ -170,6 +191,40 @@ class ApiClient:
         if normalised in _VALID_TASKS:
             return normalised
         return "analyze_video"
+
+    @staticmethod
+    def _normalise_overlay_modes(
+        overlays: Sequence[str] | None,
+    ) -> list[str] | None:
+        if overlays is None:
+            return None
+        normalised: list[str] = []
+        for item in overlays:
+            key = _OVERLAY_ALIASES.get(item, item)
+            key = str(key).strip().lower()
+            if not key:
+                continue
+            if key in _KNOWN_OVERLAYS and key not in normalised:
+                normalised.append(key)
+        return normalised
+
+    def _build_options(
+        self,
+        *,
+        task: str,
+        parameters: dict[str, Any] | None,
+        overlays: Sequence[str] | None,
+    ) -> dict[str, Any]:
+        options: dict[str, Any] = {}
+        defaults = _TASK_DEFAULT_OPTIONS.get(task)
+        if defaults:
+            options.update(deepcopy(defaults))
+        if parameters:
+            options.update(deepcopy(parameters))
+        overlay_list = self._normalise_overlay_modes(overlays)
+        if overlay_list is not None:
+            options["overlays"] = overlay_list
+        return options
 
 
 __all__ = ["ApiClient", "JobHandle", "JobState"]

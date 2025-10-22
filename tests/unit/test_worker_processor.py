@@ -165,3 +165,21 @@ def test_processor_reports_failure_when_all_writers_fail(
     metadata_path = tmp_path.joinpath(str(job.job_id), "result.json")
     data = json.loads(metadata_path.read_text())
     assert data["video"]["error"] == "unable to initialise video writer"
+
+
+def test_normalise_overlays_accepts_aliases(tmp_path: Path) -> None:
+    settings = Settings(artifact_root=tmp_path)
+    processor = VisionProcessor(settings)
+    payload = {
+        "options": {
+            "overlay_modes": [
+                "overlay.activity_heatmap",
+                "overlay.object_tracking",
+                "pose_skeleton",
+            ]
+        }
+    }
+
+    overlays = processor._normalise_overlays(payload)
+
+    assert overlays == {"heatmap": True, "tracking": True, "pose": True}

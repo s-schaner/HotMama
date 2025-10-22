@@ -17,6 +17,11 @@ def test_api_client_submit_status_and_download(tmp_path) -> None:
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.method == "POST" and request.url.path.endswith("/jobs"):
+            payload = request.json()
+            assert payload["payload"]["task"] == "analyze_video"
+            assert payload["payload"]["options"].get("overlays") == [
+                "heatmap"
+            ]
             return httpx.Response(
                 202,
                 json={
@@ -55,7 +60,11 @@ def test_api_client_submit_status_and_download(tmp_path) -> None:
     transport = httpx.MockTransport(handler)
     with httpx.Client(transport=transport, base_url="http://testserver/v1") as http_client:
         client = ApiClient("http://testserver/v1", timeout=1.0, client=http_client)
-        handle = client.submit_job("/tmp/video.mp4")
+        handle = client.submit_job(
+            "/tmp/video.mp4",
+            job_type="pipeline.analysis",
+            overlays=["overlay.activity_heatmap"],
+        )
         assert handle.job_id == job_id
         assert handle.status == "queued"
         assert handle.priority == "normal"
