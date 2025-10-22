@@ -38,10 +38,11 @@ class SessionService:
 
     def create_session(self, data: schemas.SessionCreate) -> str:
         session_id = str(uuid.uuid4())
+        created_utc = datetime.utcnow().isoformat()
         with self._connection() as conn:
             conn.execute(
-                "INSERT INTO sessions(id, title, venue, meta) VALUES (?, ?, ?, ?)",
-                (session_id, data.title, data.venue, json.dumps(data.meta)),
+                "INSERT INTO sessions(id, created_utc, title, venue, meta) VALUES (?, ?, ?, ?, ?)",
+                (session_id, created_utc, data.title, data.venue, json.dumps(data.meta)),
             )
             for side in ("A", "B"):
                 conn.execute(
@@ -75,7 +76,7 @@ class SessionService:
                     SELECT id, created_utc, title, venue, meta
                     FROM sessions
                     WHERE title LIKE ? OR venue LIKE ? OR id LIKE ?
-                    ORDER BY created_utc DESC
+                    ORDER BY datetime(created_utc) DESC, rowid DESC
                     LIMIT ? OFFSET ?
                 """
                 search_term = f"%{search}%"
@@ -84,7 +85,7 @@ class SessionService:
                 query = """
                     SELECT id, created_utc, title, venue, meta
                     FROM sessions
-                    ORDER BY created_utc DESC
+                    ORDER BY datetime(created_utc) DESC, rowid DESC
                     LIMIT ? OFFSET ?
                 """
                 rows = conn.execute(query, (limit, offset)).fetchall()
@@ -334,6 +335,24 @@ class SessionService:
             "rollup_summary": rollup_summary,
         }
 
+    @staticmethod
+    def _serialize_session_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Convert session payload into JSON-serializable primitives."""
+
+        serialized: Dict[str, Any] = {
+            "session": payload["session"].model_dump(mode="json"),
+            "clips": [clip.model_dump(mode="json") for clip in payload["clips"]],
+            "teams": payload["teams"],
+            "rosters": {
+                side: [entry.model_dump(mode="json") for entry in entries]
+                for side, entries in payload["rosters"].items()
+            },
+            "event_count": payload["event_count"],
+            "rollup_summary": payload["rollup_summary"],
+        }
+
+        return serialized
+
     def update_session(self, session_id: str, updates: Dict[str, Any]) -> None:
         """
         Update session metadata.
@@ -391,7 +410,10 @@ class SessionService:
         if backup:
             try:
                 session_data = self.load_session(session_id)
-                self.backup_manager.create_snapshot(session_id, session_data)
+                self.backup_manager.create_snapshot(
+                    session_id,
+                    self._serialize_session_payload(session_data),
+                )
             except Exception:
                 # Don't fail deletion if backup fails
                 pass
@@ -541,7 +563,10 @@ class SessionService:
         session_data = self.load_session(session_id)
 
         if auto_backup:
-            self.backup_manager.create_snapshot(session_id, session_data)
+            self.backup_manager.create_snapshot(
+                session_id,
+                self._serialize_session_payload(session_data),
+            )
 
             # Cleanup old snapshots (keep latest 10)
             self.backup_manager.cleanup_old_snapshots(session_id, keep_latest=10)
