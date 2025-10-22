@@ -4,9 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-
-from openai import OpenAI
-from openai import OpenAIError  # type: ignore[attr-defined]
+from typing import Any
 
 from .config import Settings
 from .schemas import JobSpec
@@ -69,10 +67,19 @@ class LMStudioJobParser(JobParser):
     def __init__(self, settings: Settings) -> None:
         if not settings.lmstudio_base_url or not settings.lm_parser_model:
             raise ValueError("LM Studio parser requires base URL and model name")
-        self._client = OpenAI(
+        try:
+            from openai import OpenAI  # type: ignore[attr-defined]
+            from openai import OpenAIError as OpenAIClientError  # type: ignore[attr-defined]
+        except ModuleNotFoundError as exc:  # pragma: no cover - optional dependency
+            raise RuntimeError(
+                "openai package is required for LM Studio parser support"
+            ) from exc
+
+        self._client: Any = OpenAI(
             base_url=settings.lmstudio_base_url,
             api_key=settings.lmstudio_api_key,
         )
+        self._openai_error: type[Exception] = OpenAIClientError
         self._model = settings.lm_parser_model
         self._temperature = settings.lm_parser_temperature
         self._max_tokens = settings.lm_parser_max_tokens
@@ -98,7 +105,7 @@ class LMStudioJobParser(JobParser):
                     },
                 },
             )
-        except OpenAIError as exc:  # pragma: no cover - network failure path
+        except self._openai_error as exc:  # pragma: no cover - network failure path
             LOGGER.exception("parser request failed", extra={"error": str(exc)})
             raise JobParserError("parser request failed", status_code=502) from exc
         except Exception as exc:  # pragma: no cover - defensive catch-all
