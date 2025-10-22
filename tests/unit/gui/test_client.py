@@ -1,7 +1,10 @@
 from datetime import datetime
 from uuid import uuid4
 
-import httpx
+import pytest
+
+httpx = pytest.importorskip("httpx")
+pytest.importorskip("pydantic")
 
 from deploy.gui.app.client import ApiClient
 
@@ -10,7 +13,7 @@ def test_api_client_submit_status_and_download(tmp_path) -> None:
     job_id = uuid4()
     submitted_at = datetime.utcnow().isoformat()
     updated_at = datetime.utcnow().isoformat()
-    artifact_bytes = b"artifact"
+    artifact_bytes = b"video"
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.method == "POST" and request.url.path.endswith("/jobs"):
@@ -35,7 +38,7 @@ def test_api_client_submit_status_and_download(tmp_path) -> None:
                     "updated_at": updated_at,
                     "profile": "cpu",
                     "message": None,
-                    "artifact_path": "/app/sessions/example/result.json",
+                    "artifact_path": "/app/sessions/example/result.mp4",
                     "priority": "high",
                 },
             )
@@ -45,7 +48,7 @@ def test_api_client_submit_status_and_download(tmp_path) -> None:
             return httpx.Response(
                 200,
                 content=artifact_bytes,
-                headers={"content-disposition": "attachment; filename=result.json"},
+                headers={"content-disposition": "attachment; filename=result.mp4"},
             )
         return httpx.Response(404)
 
@@ -61,11 +64,11 @@ def test_api_client_submit_status_and_download(tmp_path) -> None:
 
         state = client.get_status(job_id)
         assert state.status == "completed"
-        assert state.as_dict()["artifact_path"] == "/app/sessions/example/result.json"
+        assert state.as_dict()["artifact_path"] == "/app/sessions/example/result.mp4"
         assert state.priority == "high"
 
         artifact_path = client.download_artifact(job_id, tmp_path)
-        assert artifact_path.name == "result.json"
+        assert artifact_path.name == "result.mp4"
         assert artifact_path.read_bytes() == artifact_bytes
 
         client.close()

@@ -34,7 +34,7 @@ Supporting infrastructure:
 ## 🔁 Runtime Flow
 
 1. API receives a job (`POST /v1/jobs`) and enqueues a JSON payload in Redis.
-2. Worker pops jobs, lazily loads the Torch/ONNX/OpenCV toolchain, processes the input, and writes a result artifact (`result.json`).
+2. Worker pops jobs, lazily loads the Torch/ONNX/OpenCV toolchain, processes the input, and writes a playback artifact (`result.mp4`/`result.mkv`) alongside structured metadata (`result.json`).
 3. API exposes job status (`GET /v1/jobs/{id}`) and serves artifacts once complete.
 
 Both services share configuration through `.env` (generated automatically). Logging can be toggled to JSON by setting `LOG_JSON=1`.
@@ -129,7 +129,7 @@ docker compose down --remove-orphans
 
 - **Docker not found** — rerun the bootstrap script; it installs Docker CE on Ubuntu/Debian and prints instructions for other OSes.
 - **GPU not used** — ensure `nvidia-smi` works on the host and rerun bootstrap. The script installs NVIDIA Container Toolkit on Linux (when sudo/root available).
-- **Artifacts missing** — check worker logs (`docker compose logs worker-vision-cpu`). The worker stores artifacts under `./sessions/<job-id>/result.json`.
+- **Artifacts missing** — check worker logs (`docker compose logs worker-vision-cpu`). The worker stores artifacts under `./sessions/<job-id>/result.(mp4|mkv)` plus `result.json` metadata.
 - **WSL2 GPU** — enable GPU support in Windows settings and ensure the NVIDIA drivers are installed in Windows.
 
 ## 📄 Additional Docs
