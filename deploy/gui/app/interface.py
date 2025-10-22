@@ -278,12 +278,16 @@ def create_interface(controller: GuiController):
     def _handle_submit(
         upload_path: str | None,
         params_text: str,
-        job_type_value: str,
+        profile_value: str,
+        overlay_values: list[str] | None,
         current_job_id: str,
         current_monitor: str,
     ):
         job_id, message = controller.submit_job(
-            upload_path, params_text, job_type=job_type_value
+            upload_path,
+            params_text,
+            job_type=profile_value,
+            overlay_modes=overlay_values or [],
         )
         banner = _render_alert(message)
         source_preview = _video_value(upload_path)
@@ -362,14 +366,30 @@ def create_interface(controller: GuiController):
                     elem_classes=["video-preview"],
                     format=None,
                 )
-                job_type = gr.Dropdown(
-                    label="Job type",
+                profile = gr.Radio(
+                    label="Analysis profile",
                     choices=[
-                        ("Vision pipeline", "vision.process"),
-                        ("Segmentation sweep", "vision.segment"),
-                        ("Tracking diagnostics", "vision.track"),
+                        ("Full analysis run", "pipeline.analysis"),
+                        ("Segmentation sweep", "pipeline.segment"),
+                        ("Event timeline triage", "pipeline.events"),
                     ],
-                    value="vision.process",
+                    value="pipeline.analysis",
+                )
+                overlays = gr.CheckboxGroup(
+                    label="Video overlays",
+                    choices=[
+                        (
+                            "Activity heatmap (intensity map)",
+                            "overlay.activity_heatmap",
+                        ),
+                        (
+                            "Object tracking trails",
+                            "overlay.object_tracking",
+                        ),
+                        ("Pose skeletons", "overlay.pose_skeleton"),
+                    ],
+                    value=["overlay.activity_heatmap"],
+                    info="Combine overlays to tailor the rendered diagnostic layers.",
                 )
                 params = gr.Code(
                     label="Parameters (JSON)",
@@ -443,7 +463,7 @@ def create_interface(controller: GuiController):
 
         submit_btn.click(
             _handle_submit,
-            inputs=[upload, params, job_type, active_job, job_id_input],
+            inputs=[upload, params, profile, overlays, active_job, job_id_input],
             outputs=[
                 job_id_display,
                 job_id_input,
@@ -471,9 +491,23 @@ def create_interface(controller: GuiController):
         )
 
         clear_btn.click(
-            lambda: (gr.update(value=None), "{}", "", gr.update(value=None)),
+            lambda: (
+                gr.update(value=None),
+                "{}",
+                "",
+                gr.update(value=None),
+                "pipeline.analysis",
+                ["overlay.activity_heatmap"],
+            ),
             inputs=None,
-            outputs=[upload, params, submission_feedback, source_preview],
+            outputs=[
+                upload,
+                params,
+                submission_feedback,
+                source_preview,
+                profile,
+                overlays,
+            ],
         )
 
     return demo

@@ -7,6 +7,8 @@ import logging
 from json import JSONDecodeError
 from uuid import UUID
 
+from collections.abc import Sequence
+
 from .client import ApiClient, JobHandle, JobState
 from .config import Settings
 from .storage import StorageManager
@@ -31,7 +33,8 @@ class GuiController:
         self,
         upload_path: str | None,
         parameters_json: str,
-        job_type: str = "vision.process",
+        job_type: str = "pipeline.analysis",
+        overlay_modes: Sequence[str] | None = None,
     ) -> tuple[str, str]:
         if not upload_path:
             return "", "⚠️ Please upload a video before submitting."
@@ -53,7 +56,10 @@ class GuiController:
 
         try:
             handle = self._client.submit_job(
-                str(stored_path), parameters=parameters, job_type=job_type
+                str(stored_path),
+                parameters=parameters,
+                job_type=job_type,
+                overlays=list(overlay_modes) if overlay_modes is not None else None,
             )
         except RuntimeError as exc:
             LOGGER.error("job submission failed", exc_info=exc)

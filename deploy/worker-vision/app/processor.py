@@ -17,6 +17,19 @@ from .schemas import ProcessResult, QueuedJob
 LOGGER = logging.getLogger("hotmama.worker.processor")
 
 
+_OVERLAY_ALIAS_MAP: dict[str, str] = {
+    "heatmap": "heatmap",
+    "activity_heatmap": "heatmap",
+    "overlay.activity_heatmap": "heatmap",
+    "tracking": "tracking",
+    "object_tracking": "tracking",
+    "overlay.object_tracking": "tracking",
+    "pose": "pose",
+    "pose_skeleton": "pose",
+    "overlay.pose_skeleton": "pose",
+}
+
+
 class VisionProcessor:
     """Performs lightweight processing to validate the pipeline."""
 
@@ -128,18 +141,26 @@ class VisionProcessor:
     def _normalise_overlays(self, payload: dict[str, Any]) -> dict[str, bool]:
         overlays = {"heatmap": False, "tracking": False, "pose": False}
         options = payload.get("options")
+        raw_overlays = None
         if isinstance(options, dict):
-            raw_overlays = options.get("overlays") or options.get("overlay")
-        else:
-            raw_overlays = None
+            for key in ("overlays", "overlay", "overlay_modes", "overlay_mode"):
+                if key in options:
+                    raw_overlays = options[key]
+                    break
         if raw_overlays is None:
             task = payload.get("task")
-            if isinstance(task, str) and task.lower() == "generate_heatmap":
-                overlays["heatmap"] = True
+            if isinstance(task, str):
+                task_key = task.lower()
+                alias = _OVERLAY_ALIAS_MAP.get(task_key)
+                if alias:
+                    overlays[alias] = True
+                    return overlays
+                if task_key == "generate_heatmap":
+                    overlays["heatmap"] = True
             return overlays
         if isinstance(raw_overlays, dict):
             for name, enabled in raw_overlays.items():
-                key = str(name).lower()
+                key = _OVERLAY_ALIAS_MAP.get(str(name).strip().lower())
                 if key in overlays and bool(enabled):
                     overlays[key] = True
             return overlays
@@ -148,7 +169,7 @@ class VisionProcessor:
         else:
             iterable = [part.strip() for part in str(raw_overlays).split(",")]
         for item in iterable:
-            key = str(item).lower()
+            key = _OVERLAY_ALIAS_MAP.get(str(item).strip().lower())
             if key in overlays:
                 overlays[key] = True
         return overlays
