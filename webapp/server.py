@@ -478,8 +478,8 @@ async def heatmap(
 
 @app.post("/_api/analytics/process_video")
 async def process_video_with_tracking(
-    session_id: str = Form(...),
     video: Annotated[UploadFile, File(...)],
+    session_id: str = Form(...),
     enable_pose: bool = Form(True),
     enable_overlays: bool = Form(True),
     yolo_model: str = Form("yolov8n"),
