@@ -1,118 +1,89 @@
-name: CI Pipeline
+name: CI
 
 on:
   push:
-    branches: [main, develop, claude/**]
+    branches: [main, refactor/**]
   pull_request:
-    branches: [main, develop]
 
 jobs:
-  lint:
-    name: Code Quality & Linting
-    runs-on: ubuntu-latest
+  lint-type-unit:
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
-          cache: 'pip'
-
-      - name: Install linting tools
+          python-version: "3.11"
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-${{ hashFiles('deploy/api/requirements.api.txt', 'deploy/worker-vision/requirements.worker.cpu.txt') }}
+          restore-keys: |
+            pip-${{ runner.os }}-
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install ruff black mypy
+          pip install -r deploy/api/requirements.api.txt \
+                     -r deploy/worker-vision/requirements.worker.cpu.txt \
+                     pytest ruff black mypy
+      - name: Ruff
+        run: ruff check .
+      - name: Black
+        run: black --check .
+      - name: Mypy
+        run: mypy deploy/api deploy/worker-vision
+      - name: Pytest
+        run: pytest
 
-      - name: Run ruff
-        run: ruff check . --output-format=github
-        continue-on-error: true
-
-      - name: Check code formatting with black
-        run: black --check --diff .
-        continue-on-error: true
-
-      - name: Type check with mypy
-        run: mypy app/ webapp/ core/ llm/ --ignore-missing-imports
-        continue-on-error: true
-
-  test:
-    name: Run Tests
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ['3.10', '3.11']
-
+  build-images:
+    runs-on: ubuntu-22.04
+    needs: lint-type-unit
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-          cache: 'pip'
-
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ffmpeg libsm6 libxext6 libgl1
-
-      - name: Install Python dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m tools.install --profile cpu
-          pip install pytest pytest-cov pytest-asyncio
-
-      - name: Run tests with coverage
-        run: |
-          pytest -v --cov=. --cov-report=xml --cov-report=term
-
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
-        if: matrix.python-version == '3.11'
-        with:
-          file: ./coverage.xml
-          fail_ci_if_error: false
-
-  docker:
-    name: Docker Build Test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build Docker image
+      - uses: docker/setup-buildx-action@v3
+      - name: Build API image
         uses: docker/build-push-action@v5
         with:
           context: .
+          file: deploy/api/Dockerfile
           push: false
-          tags: volleysense:test
+          tags: hotmama/api:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Build worker CPU image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: deploy/worker-vision/Dockerfile
+          target: cpu
+          push: false
+          tags: hotmama/worker-vision:cpu-ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  security:
-    name: Security Scan
-    runs-on: ubuntu-latest
+  smoke-compose-cpu:
+    runs-on: ubuntu-22.04
+    needs: build-images
     steps:
       - uses: actions/checkout@v4
+      - name: Prepare environment
+        run: cp .env.example .env
+      - name: Smoke test stack (CPU)
+        run: ./tools/test_compose_smoke.sh
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+  build-images-gpu:
+    runs-on: ubuntu-22.04
+    needs: build-images
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build CUDA worker image
+        uses: docker/build-push-action@v5
         with:
-          python-version: '3.11'
-
-      - name: Install bandit
-        run: pip install bandit[toml]
-
-      - name: Run security scan
-        run: bandit -r app/ webapp/ core/ llm/ plugins/ -f json -o bandit-report.json
-        continue-on-error: true
-
-      - name: Upload security report
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: security-report
-          path: bandit-report.json
+          context: .
+          file: deploy/worker-vision/Dockerfile
+          target: cuda
+          push: false
+          tags: hotmama/worker-vision:cuda-ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

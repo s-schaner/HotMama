@@ -1,0 +1,7 @@
+redis==5.0.3
+pydantic==2.7.1
+pydantic-settings==2.2.1
+opencv-python-headless==4.9.0.80
+onnxruntime-gpu==1.17.1
+torch==2.3.0+cu121
+numpy==1.26.4
