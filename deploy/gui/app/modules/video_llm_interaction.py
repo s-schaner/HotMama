@@ -36,6 +36,14 @@ class VideoLLMInteractionModule(GuiModule):
             query: str,
             vision_model: str,
             llm_provider: str,
+            endpoint_url: str,
+            api_key: str,
+            model_name: str,
+            num_frames: int,
+            frame_width: int,
+            frame_height: int,
+            temperature: float,
+            max_tokens: int,
         ):
             """Handle query submission and stream response."""
             if not video_path:
@@ -46,15 +54,26 @@ class VideoLLMInteractionModule(GuiModule):
                 yield "⚠️ Please enter a query."
                 return
 
+            if not endpoint_url.strip():
+                yield "⚠️ Please set the LLM endpoint URL."
+                return
+
             yield "Processing your query...\n\n"
 
             try:
-                # Stream response from controller
+                # Stream response from controller with custom parameters
                 for chunk in controller.query_video_llm(
                     video_path=video_path,
                     query=query.strip(),
                     vision_model=vision_model,
                     llm_provider=llm_provider,
+                    endpoint_url=endpoint_url.strip(),
+                    api_key=api_key.strip() if api_key else "default",
+                    model_name=model_name.strip() if model_name else None,
+                    num_frames=num_frames,
+                    frame_size=(frame_width, frame_height),
+                    temperature=temperature,
+                    max_tokens=max_tokens,
                 ):
                     yield chunk
             except Exception as exc:
@@ -102,6 +121,69 @@ class VideoLLMInteractionModule(GuiModule):
                 return None
             return video_path
 
+        def handle_save_config(
+            config_name: str,
+            endpoint_url: str,
+            api_key: str,
+            model_name: str,
+            llm_provider: str,
+        ):
+            """Save current configuration."""
+            if not config_name.strip():
+                return "⚠️ Please enter a configuration name.", gr.update()
+
+            try:
+                controller.save_llm_config(
+                    name=config_name.strip(),
+                    provider=llm_provider,
+                    endpoint=endpoint_url.strip(),
+                    api_key=api_key.strip(),
+                    model=model_name.strip(),
+                )
+                # Refresh the dropdown
+                configs = controller.list_llm_configs()
+                return f"✅ Configuration '{config_name}' saved!", gr.update(
+                    choices=[""] + configs
+                )
+            except Exception as exc:
+                LOGGER.error("Failed to save configuration", exc_info=exc)
+                return f"❌ Error: {exc}", gr.update()
+
+        def handle_load_config(config_name: str):
+            """Load a saved configuration."""
+            if not config_name or config_name == "":
+                return "", "", "", "lmstudio"
+
+            try:
+                config = controller.load_llm_config(config_name)
+                if config:
+                    return (
+                        config.get("endpoint", ""),
+                        config.get("api_key", ""),
+                        config.get("model", ""),
+                        config.get("provider", "lmstudio"),
+                    )
+                else:
+                    return "", "", "", "lmstudio"
+            except Exception as exc:
+                LOGGER.error("Failed to load configuration", exc_info=exc)
+                return "", "", "", "lmstudio"
+
+        def handle_delete_config(config_name: str):
+            """Delete a saved configuration."""
+            if not config_name or config_name == "":
+                return "⚠️ Please select a configuration to delete.", gr.update()
+
+            try:
+                controller.delete_llm_config(config_name)
+                configs = controller.list_llm_configs()
+                return f"✅ Configuration '{config_name}' deleted!", gr.update(
+                    choices=[""] + configs, value=""
+                )
+            except Exception as exc:
+                LOGGER.error("Failed to delete configuration", exc_info=exc)
+                return f"❌ Error: {exc}", gr.update()
+
         # Build the UI
         with gr.Blocks() as module_ui:
             gr.Markdown("### Video LLM Interaction")
@@ -110,6 +192,112 @@ class VideoLLMInteractionModule(GuiModule):
                 "The LLM will analyze the video and provide answers in real-time."
             )
 
+            # Configuration Section
+            with gr.Accordion("LLM Configuration", open=True):
+                with gr.Row():
+                    with gr.Column(scale=2):
+                        # Saved configurations dropdown
+                        saved_configs = controller.list_llm_configs()
+                        config_selector = gr.Dropdown(
+                            label="Load Saved Configuration",
+                            choices=[""] + saved_configs,
+                            value="",
+                            info="Select a previously saved configuration",
+                        )
+
+                        # LLM provider selector
+                        llm_provider_selector = gr.Radio(
+                            label="LLM Provider",
+                            choices=[
+                                ("LM Studio (Local)", "lmstudio"),
+                                ("Hugging Face (Cloud)", "huggingface"),
+                            ],
+                            value="lmstudio",
+                            info="Choose the LLM inference provider",
+                        )
+
+                    with gr.Column(scale=3):
+                        # Endpoint configuration
+                        endpoint_url_input = gr.Textbox(
+                            label="LLM Endpoint URL",
+                            value="http://192.168.86.29:1234",
+                            placeholder="http://192.168.86.29:1234 or HF endpoint",
+                            info="Base URL for the LLM API",
+                        )
+
+                        api_key_input = gr.Textbox(
+                            label="API Key",
+                            value="lm-studio",
+                            placeholder="Enter API key (if required)",
+                            type="password",
+                            info="API key for authentication",
+                        )
+
+                        model_name_input = gr.Textbox(
+                            label="Model Name",
+                            value="qwen/qwen2.5-vl-7b",
+                            placeholder="qwen/qwen2.5-vl-7b or model path",
+                            info="Name or path of the vision-language model",
+                        )
+
+                with gr.Row():
+                    config_name_input = gr.Textbox(
+                        label="Configuration Name",
+                        placeholder="e.g., 'Local LM Studio', 'HF Production'",
+                        scale=3,
+                    )
+                    save_config_btn = gr.Button("Save Config", variant="primary", scale=1)
+                    delete_config_btn = gr.Button("Delete Config", variant="secondary", scale=1)
+
+                config_feedback = gr.Markdown("")
+
+            # Video Quality Controls
+            with gr.Accordion("Video Quality & Processing Settings", open=False):
+                with gr.Row():
+                    num_frames_slider = gr.Slider(
+                        label="Number of Frames to Sample",
+                        minimum=1,
+                        maximum=10,
+                        value=5,
+                        step=1,
+                        info="More frames = better context but slower processing",
+                    )
+
+                    temperature_slider = gr.Slider(
+                        label="Temperature",
+                        minimum=0.0,
+                        maximum=2.0,
+                        value=0.0,
+                        step=0.1,
+                        info="Randomness of LLM output (0=deterministic, higher=creative)",
+                    )
+
+                with gr.Row():
+                    frame_width_input = gr.Number(
+                        label="Frame Width (px)",
+                        value=512,
+                        minimum=128,
+                        maximum=1920,
+                        info="Width to resize frames before sending to LLM",
+                    )
+
+                    frame_height_input = gr.Number(
+                        label="Frame Height (px)",
+                        value=384,
+                        minimum=96,
+                        maximum=1080,
+                        info="Height to resize frames before sending to LLM",
+                    )
+
+                    max_tokens_input = gr.Number(
+                        label="Max Tokens",
+                        value=1024,
+                        minimum=128,
+                        maximum=4096,
+                        info="Maximum length of LLM response",
+                    )
+
+            # Main Video Analysis Section
             with gr.Row():
                 with gr.Column(scale=2):
                     # Video player section
@@ -125,23 +313,11 @@ class VideoLLMInteractionModule(GuiModule):
                         label="Vision Model",
                         choices=[
                             ("YOLOv8 - Object Detection", "yolov8"),
-                            ("Detectron2 - Instance Segmentation", "detectron2"),
-                            ("Pose Estimation - Skeletal Analysis", "pose"),
+                            ("MediaPipe - Pose Estimation", "pose"),
                             ("None - LLM Only", "none"),
                         ],
-                        value="yolov8",
-                        info="Select the computer vision model for video analysis",
-                    )
-
-                    # LLM provider selector
-                    llm_provider_selector = gr.Radio(
-                        label="LLM Provider",
-                        choices=[
-                            ("LM Studio (Local)", "lmstudio"),
-                            ("Hugging Face", "huggingface"),
-                        ],
-                        value="lmstudio",
-                        info="Choose the LLM inference provider",
+                        value="none",
+                        info="Select the computer vision model for video preprocessing",
                     )
 
                 with gr.Column(scale=2):
@@ -227,6 +403,14 @@ class VideoLLMInteractionModule(GuiModule):
                     query_box,
                     vision_model_selector,
                     llm_provider_selector,
+                    endpoint_url_input,
+                    api_key_input,
+                    model_name_input,
+                    num_frames_slider,
+                    frame_width_input,
+                    frame_height_input,
+                    temperature_slider,
+                    max_tokens_input,
                 ],
                 outputs=[reply_box],
             )
@@ -243,6 +427,36 @@ class VideoLLMInteractionModule(GuiModule):
                 handle_video_control,
                 inputs=[video_player, control_command_box],
                 outputs=[control_feedback],
+            )
+
+            # Configuration management handlers
+            save_config_btn.click(
+                handle_save_config,
+                inputs=[
+                    config_name_input,
+                    endpoint_url_input,
+                    api_key_input,
+                    model_name_input,
+                    llm_provider_selector,
+                ],
+                outputs=[config_feedback, config_selector],
+            )
+
+            config_selector.change(
+                handle_load_config,
+                inputs=[config_selector],
+                outputs=[
+                    endpoint_url_input,
+                    api_key_input,
+                    model_name_input,
+                    llm_provider_selector,
+                ],
+            )
+
+            delete_config_btn.click(
+                handle_delete_config,
+                inputs=[config_selector],
+                outputs=[config_feedback, config_selector],
             )
 
         return module_ui

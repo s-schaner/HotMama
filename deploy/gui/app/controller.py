@@ -14,13 +14,30 @@ from deploy.api.app.parsing import DEFAULT_SYSTEM_PROMPT
 
 from .client import ApiClient, JobHandle, JobState, LMStudioClient, VideoLLMClient
 from .config import Settings
+from .config_manager import ConfigManager
 from .storage import StorageManager
 
 try:
     import cv2
+    import numpy as np
     HAS_CV2 = True
 except ImportError:
     HAS_CV2 = False
+    np = None  # type: ignore
+
+try:
+    from ultralytics import YOLO
+    HAS_YOLO = True
+except ImportError:
+    HAS_YOLO = False
+    YOLO = None  # type: ignore
+
+try:
+    import mediapipe as mp
+    HAS_MEDIAPIPE = True
+except ImportError:
+    HAS_MEDIAPIPE = False
+    mp = None  # type: ignore
 
 LOGGER = logging.getLogger("hotmama.gui.controller")
 
@@ -35,12 +52,19 @@ class GuiController:
         settings: Settings,
         lm_client: LMStudioClient | None = None,
         video_llm_client: VideoLLMClient | None = None,
+        config_manager: ConfigManager | None = None,
     ) -> None:
         self._client = client
         self._storage = storage
         self._settings = settings
         self._lm_client = lm_client
         self._video_llm_client = video_llm_client
+        self._config_manager = config_manager or ConfigManager(settings.artifact_root / "gui" / "configs")
+
+        # Lazy-loaded vision models
+        self._yolo_model = None
+        self._mp_pose = None
+        self._mp_drawing = None
 
     def submit_job(
         self,
@@ -153,14 +177,28 @@ class GuiController:
         query: str,
         vision_model: str = "none",
         llm_provider: str = "lmstudio",
+        endpoint_url: str | None = None,
+        api_key: str | None = None,
+        model_name: str | None = None,
+        num_frames: int = 5,
+        frame_size: tuple[int, int] = (512, 384),
+        temperature: float = 0.0,
+        max_tokens: int = 1024,
     ):
         """Query video using LLM with optional vision model preprocessing.
 
         Args:
             video_path: Path to video file
             query: User question about the video
-            vision_model: Vision model to use (yolov8, detectron2, pose, none)
+            vision_model: Vision model to use (yolov8, pose, none)
             llm_provider: LLM provider (lmstudio or huggingface)
+            endpoint_url: Custom endpoint URL (overrides settings)
+            api_key: Custom API key (overrides settings)
+            model_name: Custom model name (overrides settings)
+            num_frames: Number of frames to sample from video
+            frame_size: Tuple of (width, height) for frame resizing
+            temperature: LLM temperature (0.0-2.0)
+            max_tokens: Maximum tokens in LLM response
 
         Yields:
             Text chunks from the streaming LLM response
@@ -173,39 +211,43 @@ class GuiController:
             yield "❌ No video provided."
             return
 
+        # Use custom endpoint or fall back to settings
+        if not endpoint_url:
+            if llm_provider == "lmstudio":
+                endpoint_url = self._settings.lmstudio_base_url
+            elif llm_provider == "huggingface":
+                endpoint_url = self._settings.huggingface_api_url
+
+        if not endpoint_url:
+            yield f"❌ No endpoint URL configured for {llm_provider}."
+            return
+
+        # Use custom values or fall back to settings
+        if not api_key:
+            api_key = (
+                self._settings.lmstudio_api_key
+                if llm_provider == "lmstudio"
+                else self._settings.huggingface_api_key
+            )
+
+        if not model_name:
+            model_name = (
+                self._settings.lm_vision_model
+                if llm_provider == "lmstudio"
+                else self._settings.huggingface_model
+            )
+
         # Create video LLM client on demand based on provider
         try:
-            if llm_provider == "lmstudio":
-                if not self._settings.lmstudio_base_url:
-                    yield "❌ LM Studio is not configured. Please set GUI_LMSTUDIO_BASE_URL."
-                    return
-
-                video_client = VideoLLMClient(
-                    provider="lmstudio",
-                    base_url=self._settings.lmstudio_base_url,
-                    api_key=self._settings.lmstudio_api_key,
-                    model=self._settings.lm_vision_model,
-                    temperature=self._settings.lm_temperature,
-                    max_tokens=self._settings.lm_max_tokens,
-                    timeout=self._settings.request_timeout,
-                )
-            elif llm_provider == "huggingface":
-                if not self._settings.huggingface_api_url:
-                    yield "❌ Hugging Face is not configured. Please set GUI_HUGGINGFACE_API_URL."
-                    return
-
-                video_client = VideoLLMClient(
-                    provider="huggingface",
-                    base_url=self._settings.huggingface_api_url,
-                    api_key=self._settings.huggingface_api_key,
-                    model=self._settings.huggingface_model,
-                    temperature=self._settings.lm_temperature,
-                    max_tokens=self._settings.lm_max_tokens,
-                    timeout=self._settings.request_timeout,
-                )
-            else:
-                yield f"❌ Unsupported LLM provider: {llm_provider}"
-                return
+            video_client = VideoLLMClient(
+                provider=llm_provider,
+                base_url=endpoint_url,
+                api_key=api_key or "default",
+                model=model_name,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                timeout=self._settings.request_timeout,
+            )
 
             # Enhance query with vision model context if specified
             enhanced_query = query
@@ -216,8 +258,13 @@ class GuiController:
                     f"for enhanced object detection and tracking."
                 )
 
-            # Stream response from video LLM
-            yield from video_client.query_video_stream(video_path, enhanced_query)
+            # Stream response from video LLM with custom parameters
+            yield from video_client.query_video_stream(
+                video_path,
+                enhanced_query,
+                num_frames=num_frames,
+                frame_size=frame_size,
+            )
 
             video_client.close()
 
@@ -328,35 +375,161 @@ class GuiController:
             return f"❌ Error: {exc}"
 
     def _apply_pose_skeleton(self, frame):
-        """Apply pose estimation skeleton overlay (placeholder)."""
-        # This is a placeholder - would integrate with actual pose model
-        # For now, just return frame with text overlay
-        import cv2
-        cv2.putText(
-            frame,
-            "Pose Estimation (placeholder)",
-            (10, 30),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            1,
-            (0, 255, 0),
-            2,
-        )
-        return frame
+        """Apply pose estimation skeleton overlay using MediaPipe."""
+        if not HAS_MEDIAPIPE:
+            LOGGER.warning("MediaPipe not installed, using placeholder")
+            cv2.putText(
+                frame,
+                "MediaPipe not installed",
+                (10, 30),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1,
+                (0, 0, 255),
+                2,
+            )
+            return frame
+
+        # Lazy load MediaPipe models
+        if self._mp_pose is None:
+            self._mp_pose = mp.solutions.pose.Pose(
+                static_image_mode=True,
+                model_complexity=1,
+                enable_segmentation=False,
+                min_detection_confidence=0.5,
+            )
+            self._mp_drawing = mp.solutions.drawing_utils
+
+        try:
+            # Convert BGR to RGB
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+            # Process the frame
+            results = self._mp_pose.process(frame_rgb)
+
+            # Draw pose landmarks
+            if results.pose_landmarks:
+                self._mp_drawing.draw_landmarks(
+                    frame,
+                    results.pose_landmarks,
+                    mp.solutions.pose.POSE_CONNECTIONS,
+                    self._mp_drawing.DrawingSpec(
+                        color=(0, 255, 0), thickness=2, circle_radius=2
+                    ),
+                    self._mp_drawing.DrawingSpec(
+                        color=(0, 0, 255), thickness=2, circle_radius=2
+                    ),
+                )
+            else:
+                cv2.putText(
+                    frame,
+                    "No pose detected",
+                    (10, 30),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    1,
+                    (0, 255, 255),
+                    2,
+                )
+
+            return frame
+
+        except Exception as exc:
+            LOGGER.error("Pose estimation failed", exc_info=exc)
+            cv2.putText(
+                frame,
+                f"Pose error: {exc}",
+                (10, 30),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.7,
+                (0, 0, 255),
+                2,
+            )
+            return frame
 
     def _apply_object_detection(self, frame, model_type: str = "yolov8"):
-        """Apply object detection overlay (placeholder)."""
-        # This is a placeholder - would integrate with actual detection model
-        import cv2
-        cv2.putText(
-            frame,
-            f"{model_type.upper()} Detection (placeholder)",
-            (10, 30),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            1,
-            (0, 255, 0),
-            2,
-        )
-        return frame
+        """Apply object detection overlay using YOLOv8."""
+        if model_type != "yolov8" or not HAS_YOLO:
+            LOGGER.warning(f"{model_type} not available, using placeholder")
+            cv2.putText(
+                frame,
+                f"{model_type.upper()} not installed",
+                (10, 30),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1,
+                (0, 0, 255),
+                2,
+            )
+            return frame
+
+        # Lazy load YOLO model
+        if self._yolo_model is None:
+            try:
+                self._yolo_model = YOLO("yolov8n.pt")  # Use nano model for speed
+                LOGGER.info("Loaded YOLOv8n model")
+            except Exception as exc:
+                LOGGER.error("Failed to load YOLO model", exc_info=exc)
+                cv2.putText(
+                    frame,
+                    f"YOLO load error: {exc}",
+                    (10, 30),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.6,
+                    (0, 0, 255),
+                    2,
+                )
+                return frame
+
+        try:
+            # Run inference
+            results = self._yolo_model(frame, verbose=False)
+
+            # Draw bounding boxes and labels
+            for result in results:
+                boxes = result.boxes
+                for box in boxes:
+                    # Get box coordinates
+                    x1, y1, x2, y2 = box.xyxy[0].cpu().numpy().astype(int)
+
+                    # Get confidence and class
+                    conf = float(box.conf[0])
+                    cls = int(box.cls[0])
+                    label = f"{result.names[cls]} {conf:.2f}"
+
+                    # Draw box
+                    cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+
+                    # Draw label background
+                    (w, h), _ = cv2.getTextSize(
+                        label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 1
+                    )
+                    cv2.rectangle(
+                        frame, (x1, y1 - 20), (x1 + w, y1), (0, 255, 0), -1
+                    )
+
+                    # Draw label text
+                    cv2.putText(
+                        frame,
+                        label,
+                        (x1, y1 - 5),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.6,
+                        (0, 0, 0),
+                        1,
+                    )
+
+            return frame
+
+        except Exception as exc:
+            LOGGER.error("Object detection failed", exc_info=exc)
+            cv2.putText(
+                frame,
+                f"Detection error: {exc}",
+                (10, 30),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.7,
+                (0, 0, 255),
+                2,
+            )
+            return frame
 
     def _parse_control_command(self, command: str) -> dict[str, Any]:
         """Parse natural language control command (placeholder)."""
@@ -392,6 +565,58 @@ class GuiController:
         timestamp = frame_num / fps if fps > 0 else 0
 
         return frame_num, timestamp
+
+    def save_llm_config(
+        self,
+        name: str,
+        provider: str,
+        endpoint: str,
+        api_key: str,
+        model: str,
+    ) -> None:
+        """Save an LLM configuration for later use.
+
+        Args:
+            name: Unique name for the configuration
+            provider: Provider type (lmstudio or huggingface)
+            endpoint: Base URL for the LLM API
+            api_key: API key for authentication
+            model: Model name or path
+        """
+        config = {
+            "provider": provider,
+            "endpoint": endpoint,
+            "api_key": api_key,
+            "model": model,
+        }
+        self._config_manager.save_config(name, config)
+
+    def load_llm_config(self, name: str) -> dict[str, Any] | None:
+        """Load a saved LLM configuration.
+
+        Args:
+            name: Name of the configuration to load
+
+        Returns:
+            Configuration dictionary or None if not found
+        """
+        return self._config_manager.load_config(name)
+
+    def list_llm_configs(self) -> list[str]:
+        """List all saved LLM configuration names.
+
+        Returns:
+            List of configuration names
+        """
+        return self._config_manager.list_configs()
+
+    def delete_llm_config(self, name: str) -> None:
+        """Delete a saved LLM configuration.
+
+        Args:
+            name: Name of the configuration to delete
+        """
+        self._config_manager.delete_config(name)
 
     def close(self) -> None:
         """Release any network resources held by the controller."""

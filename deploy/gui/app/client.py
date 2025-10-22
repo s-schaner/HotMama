@@ -457,14 +457,22 @@ class VideoLLMClient:
         )
 
     def query_video_stream(
-        self, video_path: str, query: str, *, frame_indices: list[int] | None = None
+        self,
+        video_path: str,
+        query: str,
+        *,
+        frame_indices: list[int] | None = None,
+        num_frames: int = 5,
+        frame_size: tuple[int, int] = (512, 384),
     ):
         """Stream LLM response for video query.
 
         Args:
             video_path: Path to video file
             query: User question about the video
-            frame_indices: Optional list of frame indices to analyze (defaults to sampling)
+            frame_indices: Optional list of frame indices to analyze
+            num_frames: Number of frames to sample (if frame_indices not provided)
+            frame_size: Tuple of (width, height) for frame resizing
 
         Yields:
             Text chunks from the LLM response
@@ -474,7 +482,9 @@ class VideoLLMClient:
             return
 
         # Extract frames from video
-        frames_data = self._extract_frames(video_path, frame_indices)
+        frames_data = self._extract_frames(
+            video_path, frame_indices, num_frames=num_frames, frame_size=frame_size
+        )
         if not frames_data:
             yield "❌ Failed to extract frames from video."
             return
@@ -492,13 +502,19 @@ class VideoLLMClient:
             yield f"\n\n❌ Query failed: {exc}"
 
     def _extract_frames(
-        self, video_path: str, frame_indices: list[int] | None = None
+        self,
+        video_path: str,
+        frame_indices: list[int] | None = None,
+        num_frames: int = 5,
+        frame_size: tuple[int, int] = (512, 384),
     ) -> list[str]:
         """Extract frames from video and encode as base64.
 
         Args:
             video_path: Path to video file
-            frame_indices: Optional specific frame indices (defaults to uniform sampling)
+            frame_indices: Optional specific frame indices
+            num_frames: Number of frames to sample uniformly (if frame_indices not provided)
+            frame_size: Tuple of (width, height) for resizing
 
         Returns:
             List of base64-encoded JPEG frames
@@ -510,9 +526,11 @@ class VideoLLMClient:
             total_frames = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
 
             if frame_indices is None:
-                # Sample 5 frames uniformly across the video
+                # Sample num_frames uniformly across the video
                 frame_indices = [
-                    int(i * total_frames / 5) for i in range(5) if i * total_frames / 5 < total_frames
+                    int(i * total_frames / num_frames)
+                    for i in range(num_frames)
+                    if i * total_frames / num_frames < total_frames
                 ]
 
             frames_b64 = []
@@ -521,8 +539,8 @@ class VideoLLMClient:
                 success, frame = capture.read()
 
                 if success:
-                    # Resize frame for efficiency
-                    frame_resized = cv2.resize(frame, (512, 384))
+                    # Resize frame with custom size
+                    frame_resized = cv2.resize(frame, frame_size)
                     # Encode as JPEG
                     _, buffer = cv2.imencode(".jpg", frame_resized)
                     frame_b64 = base64.b64encode(buffer).decode("utf-8")
