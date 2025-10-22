@@ -219,7 +219,6 @@ def run_heatmap_pipeline(
         raise TrajectoryError(f"Could not open video: {video_path}")
 
     fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
-    frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
     frame_w = cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 1.0
     frame_h = cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 1.0
 

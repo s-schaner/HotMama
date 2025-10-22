@@ -6,7 +6,7 @@ import uuid
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, List, Optional
 
 from app.errors import NotFoundError
 from session import schemas
@@ -23,6 +23,20 @@ class SessionService:
         self.engine = SimpleNamespace(url=db_url)
         self.backup_manager = SessionBackup(sessions_dir / "_backups")
         self.rollup_computer = RollupComputer()
+        self._closed = False
+
+    def close(self) -> None:
+        """Close any resources held by the service."""
+
+        # Connections are created per operation, so there is nothing to close
+        # yet. The flag keeps the API idempotent for future extensions.
+        self._closed = True
+
+    def __enter__(self) -> "SessionService":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.close()
 
     @contextmanager
     def _connection(self):
