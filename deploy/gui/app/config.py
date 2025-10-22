@@ -29,7 +29,7 @@ class Settings(BaseSettings):
 
     # LM Studio configuration (local inference)
     lmstudio_base_url: str | None = Field(
-        default="http://127.0.0.1:1234", alias="GUI_LMSTUDIO_BASE_URL"
+        default="http://192.168.86.29:1234", alias="GUI_LMSTUDIO_BASE_URL"
     )
     lmstudio_api_key: str = Field(default="lm-studio", alias="GUI_LMSTUDIO_API_KEY")
     lm_parser_model: str | None = Field(

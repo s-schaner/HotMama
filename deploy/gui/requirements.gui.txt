@@ -2,3 +2,13 @@ gradio==4.44.1
 httpx==0.28.1
 pydantic==2.7.1
 pydantic-settings==2.2.1
+
+# Video processing and computer vision
+opencv-python-headless==4.9.0.80
+numpy==1.26.4
+
+# Object detection - YOLOv8
+ultralytics==8.0.196
+
+# Pose estimation
+mediapipe==0.10.8
