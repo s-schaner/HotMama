@@ -26,6 +26,14 @@ class Settings(BaseSettings):
     deployment_profile: Literal["cpu", "gpu", "rocm"] = Field(
         default="cpu", alias="PROFILE"
     )
+    lmstudio_base_url: str | None = Field(default=None, alias="LMSTUDIO_BASE_URL")
+    lmstudio_api_key: str = Field(default="lm-studio", alias="LMSTUDIO_API_KEY")
+    lm_parser_model: str | None = Field(default=None, alias="LM_PARSER_MODEL")
+    lm_parser_temperature: float = Field(default=0.0, alias="LM_PARSER_TEMPERATURE")
+    lm_parser_max_tokens: int = Field(default=512, alias="LM_PARSER_MAX_TOKENS")
+    lm_parser_system_prompt: str | None = Field(
+        default=None, alias="LM_PARSER_PROMPT"
+    )
 
     model_config = {
         "env_file": ".env",

@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config import get_settings
 from .dependencies import get_redis
+from .parsing import create_job_parser
 from .routes import router
 
 LOGGER = logging.getLogger("hotmama.api")
@@ -28,11 +29,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logging.basicConfig(level=logging.INFO, format=log_format)
     LOGGER.info("starting api service", extra={"service": settings.service_name})
     client = redis.from_url(settings.redis_url, decode_responses=False)
+    parser = create_job_parser(settings)
     try:
         app.state.redis_client = client
+        app.state.job_parser = parser
         yield
     finally:
         client.close()
+        if hasattr(parser, "close"):
+            parser.close()  # type: ignore[attr-defined]
         LOGGER.info("stopped api service", extra={"service": settings.service_name})
 
 

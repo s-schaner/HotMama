@@ -10,7 +10,7 @@ from uuid import UUID
 import redis
 
 from .config import Settings, get_settings
-from .schemas import JobCreateResponse, JobStatus
+from .schemas import JobCreateResponse, JobSpec, JobStatus
 
 
 class RedisQueue:
@@ -27,15 +27,18 @@ class RedisQueue:
     def _status_key(self, job_id: UUID) -> str:
         return f"{self._settings.redis_status_prefix}:{job_id}"
 
-    def enqueue(self, job: JobCreateResponse, payload: dict[str, Any]) -> None:
+    def enqueue(self, job: JobCreateResponse, spec: JobSpec) -> None:
         """Store metadata and push the job onto the queue."""
 
+        payload = spec.payload.model_dump(by_alias=True)
         job_data = {
             "job_id": str(job.job_id),
             "submitted_at": job.submitted_at.isoformat(),
             "status": job.status,
             "profile": job.profile,
             "payload": payload,
+            "priority": spec.priority,
+            "idempotency_key": spec.idempotency_key,
         }
         self._client.rpush(self.queue_name, json.dumps(job_data))
         self._client.hset(
@@ -45,6 +48,12 @@ class RedisQueue:
                 "submitted_at": job.submitted_at.isoformat(),
                 "updated_at": job.submitted_at.isoformat(),
                 "profile": job.profile,
+                "priority": spec.priority,
+                **(
+                    {"idempotency_key": spec.idempotency_key}
+                    if spec.idempotency_key
+                    else {}
+                ),
             },
         )
         self._client.expire(
@@ -66,6 +75,7 @@ class RedisQueue:
             message=decoded.get("message"),
             artifact_path=decoded.get("artifact_path"),
             profile=decoded.get("profile", "cpu"),
+            priority=decoded.get("priority", "normal"),
         )
 
     def mark_complete(

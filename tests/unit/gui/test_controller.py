@@ -6,7 +6,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from deploy.gui.app.client import JobHandle, JobState
+from deploy.gui.app.client import ApiClient, JobHandle, JobState
 from deploy.gui.app.controller import GuiController
 from deploy.gui.app.storage import StorageManager
 
@@ -15,23 +15,28 @@ class FakeApiClient:
     def __init__(self) -> None:
         self.submissions: list[tuple[str, dict, str]] = []
         self.state: JobState | None = None
-        self.last_job_type: str | None = None
+        self.last_task: str | None = None
 
     def submit_job(
         self,
         source_uri: str,
         parameters: dict | None = None,
         job_type: str = "vision.process",
+        priority: str | None = None,
     ) -> JobHandle:
         job_id = uuid4()
+        task = ApiClient._normalise_task(job_type)
         handle = JobHandle(
             job_id=job_id,
             status="queued",
             submitted_at=datetime.utcnow(),
             profile="cpu",
+            priority=priority or "normal",
+            idempotency_key="test",
+            task=task,
         )
-        self.submissions.append((source_uri, parameters or {}, job_type))
-        self.last_job_type = job_type
+        self.submissions.append((source_uri, parameters or {}, task))
+        self.last_task = task
         self.state = JobState(
             job_id=job_id,
             status="queued",
@@ -40,6 +45,7 @@ class FakeApiClient:
             profile="cpu",
             message=None,
             artifact_path=None,
+            priority=handle.priority,
         )
         return handle
 
@@ -73,6 +79,8 @@ def test_submit_job_success(controller: tuple[GuiController, FakeApiClient], tmp
     assert UUID(job_id)
     assert "queued" in message
     assert client.submissions
+    assert "Task: analyze_video" in message
+    assert "Priority: normal" in message
 
 
 def test_submit_job_with_custom_type(
@@ -85,7 +93,7 @@ def test_submit_job_with_custom_type(
     job_id, _ = gui.submit_job(str(video), "{}", job_type="vision.segment")
 
     assert UUID(job_id)
-    assert client.last_job_type == "vision.segment"
+    assert client.last_task == "extract_clips"
 
 
 def test_submit_job_invalid_json(controller: tuple[GuiController, FakeApiClient], tmp_path) -> None:
@@ -115,6 +123,7 @@ def test_refresh_status_with_artifact(
         profile="cpu",
         message=None,
         artifact_path=str(artifact),
+        priority="high",
     )
 
     payload, message, artifact_path = gui.refresh_status(job_id)

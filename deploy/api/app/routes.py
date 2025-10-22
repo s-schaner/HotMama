@@ -11,9 +11,15 @@ from fastapi.responses import FileResponse
 from redis import Redis
 
 from .config import Settings, get_settings
-from .dependencies import get_redis
+from .dependencies import get_job_parser, get_redis
 from .queue import RedisQueue
-from .schemas import HealthResponse, JobCreateRequest, JobCreateResponse, JobStatus
+from .parsing import JobParser, JobParserError
+from .schemas import (
+    HealthResponse,
+    JobCreateRequest,
+    JobCreateResponse,
+    JobStatus,
+)
 
 router = APIRouter()
 
@@ -21,17 +27,21 @@ router = APIRouter()
 class Dependencies:
     """Bundle runtime dependencies for easy injection."""
 
-    def __init__(self, redis_client: Redis, settings: Settings) -> None:
+    def __init__(
+        self, redis_client: Redis, settings: Settings, parser: JobParser
+    ) -> None:
         self.redis_client = redis_client
         self.settings = settings
         self.queue = RedisQueue(redis_client, settings)
+        self.parser = parser
 
 
 async def get_dependencies(
     settings: Annotated[Settings, Depends(get_settings)],
     redis_client: Annotated[Redis, Depends(get_redis)],
+    parser: Annotated[JobParser, Depends(get_job_parser)],
 ) -> Dependencies:
-    return Dependencies(redis_client, settings)
+    return Dependencies(redis_client, settings, parser)
 
 
 @router.get("/healthz", response_model=HealthResponse, tags=["system"])
@@ -50,10 +60,23 @@ async def submit_job(
 ) -> JobCreateResponse:
     """Submit a new job into the queue."""
 
+    try:
+        spec = request.to_spec(deps.parser)
+    except JobParserError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if spec.idempotency_key is None:
+        spec = spec.model_copy(update={"idempotency_key": str(uuid4())})
+
     job = JobCreateResponse(
-        job_id=uuid4(), profile=deps.settings.deployment_profile
+        job_id=uuid4(),
+        profile=deps.settings.deployment_profile,
+        priority=spec.priority,
+        idempotency_key=spec.idempotency_key,
     )
-    deps.queue.enqueue(job, request.payload.model_dump())
+    deps.queue.enqueue(job, spec)
     return job
 
 

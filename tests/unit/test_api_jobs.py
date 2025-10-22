@@ -1,13 +1,15 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Iterator
 from contextlib import contextmanager
 from uuid import UUID
 
 from fastapi.testclient import TestClient
 
-from deploy.api.app.dependencies import get_redis
+from deploy.api.app.dependencies import get_job_parser, get_redis
 from deploy.api.app.main import create_app
+from deploy.api.app.schemas import JobPayload, JobSpec
 
 
 class FakeRedis:
@@ -33,10 +35,22 @@ class FakeRedis:
         pass
 
 
+class StubParser:
+    def __init__(self, spec: JobSpec) -> None:
+        self.spec = spec
+        self.calls: list[str] = []
+
+    def parse(self, text: str) -> JobSpec:
+        self.calls.append(text)
+        return self.spec
+
+
 @contextmanager
-def patched_app(fake: FakeRedis) -> Iterator[TestClient]:
+def patched_app(fake: FakeRedis, parser: StubParser | None = None) -> Iterator[TestClient]:
     app = create_app()
     app.dependency_overrides[get_redis] = lambda: fake
+    if parser is not None:
+        app.dependency_overrides[get_job_parser] = lambda: parser
 
     from deploy.api.app import main as main_module
 
@@ -46,6 +60,8 @@ def patched_app(fake: FakeRedis) -> Iterator[TestClient]:
         with TestClient(app) as client:
             yield client
     finally:
+        app.dependency_overrides.pop(get_job_parser, None)
+        app.dependency_overrides.pop(get_redis, None)
         main_module.redis.from_url = original_from_url
 
 
@@ -54,18 +70,64 @@ def test_submit_and_fetch_job() -> None:
     with patched_app(fake) as client:
         response = client.post(
             "/v1/jobs",
-            json={"payload": {"source_uri": "/tmp/example.mp4", "parameters": {}}},
+            json={
+                "payload": {
+                    "task": "analyze_video",
+                    "source_uri": "/tmp/example.mp4",
+                    "options": {"mode": "fast"},
+                }
+            },
         )
         assert response.status_code == 202
         body = response.json()
         job_id = UUID(body["job_id"])
+        assert body["priority"] == "normal"
+        assert body["idempotency_key"] is not None
         assert fake.queue, "job should be enqueued"
+
+        queued = json.loads(fake.queue[0].decode())
+        assert queued["priority"] == "normal"
+        assert queued["payload"]["options"] == {"mode": "fast"}
 
         status = client.get(f"/v1/jobs/{job_id}")
         assert status.status_code == 200
         status_body = status.json()
         assert status_body["status"] == "queued"
         assert UUID(status_body["job_id"]) == job_id
+        assert status_body["priority"] == "normal"
 
         artifact = client.get(f"/v1/jobs/{job_id}/artifact")
         assert artifact.status_code == 404
+
+
+def test_submit_job_via_natural_language() -> None:
+    fake = FakeRedis()
+    spec = JobSpec(
+        payload=JobPayload(
+            task="detect_events",
+            source_uri="example.mov",
+            options={"sensitivity": "high"},
+        ),
+        priority="high",
+        idempotency_key="abc123",
+    )
+    parser = StubParser(spec)
+
+    with patched_app(fake, parser=parser) as client:
+        response = client.post(
+            "/v1/jobs",
+            json={"nl": "Detect events in example.mov with high sensitivity"},
+        )
+
+        assert response.status_code == 202
+        body = response.json()
+        assert body["priority"] == "high"
+        assert body["idempotency_key"] == "abc123"
+        assert parser.calls == [
+            "Detect events in example.mov with high sensitivity"
+        ]
+
+        queued = json.loads(fake.queue[0].decode())
+        assert queued["priority"] == "high"
+        assert queued["payload"]["task"] == "detect_events"
+        assert queued["payload"]["options"] == {"sensitivity": "high"}

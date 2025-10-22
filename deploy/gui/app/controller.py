@@ -59,7 +59,7 @@ class GuiController:
             LOGGER.error("job submission failed", exc_info=exc)
             return "", f"❌ Failed to submit job: {exc}"
 
-        message = self._format_submission_message(handle, job_type)
+        message = self._format_submission_message(handle)
         return str(handle.job_id), message
 
     def refresh_status(self, job_id_text: str) -> tuple[dict[str, str], str, str]:
@@ -93,14 +93,15 @@ class GuiController:
             return {}
         return json.loads(payload)
 
-    def _format_submission_message(self, handle: JobHandle, job_type: str) -> str:
+    def _format_submission_message(self, handle: JobHandle) -> str:
         return (
             "✅ Job {job} queued on {profile} profile at {time}".format(
                 job=handle.job_id,
                 profile=handle.profile.upper(),
                 time=handle.submitted_at.isoformat(timespec="seconds"),
             )
-            + f"\n• Task: {job_type}"
+            + f"\n• Task: {handle.task}"
+            + f"\n• Priority: {handle.priority}"
         )
 
     def _format_status_message(self, state: JobState) -> str:
