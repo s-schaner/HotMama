@@ -1,8 +1,6 @@
 """Centralized application settings using pydantic-settings."""
-from __future__ import annotations
-
 from pathlib import Path
-from typing import Literal
+from typing import List, Literal, Optional
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -28,14 +26,14 @@ class Settings(BaseSettings):
     # Directory settings
     root_dir: Path = Field(default_factory=lambda: Path.cwd(), description="Application root directory")
     sessions_dir: Path = Field(default_factory=lambda: Path.cwd() / "sessions", description="Sessions storage directory")
-    log_dir: Path | None = Field(default=None, description="Log directory (defaults to sessions_dir/logs)")
+    log_dir: Optional[Path] = Field(default=None, description="Log directory (defaults to sessions_dir/logs)")
 
     # Database settings
-    db_url: str | None = Field(default=None, description="Database URL (defaults to SQLite in sessions_dir)")
+    db_url: Optional[str] = Field(default=None, description="Database URL (defaults to SQLite in sessions_dir)")
 
     # Upload limits
     max_file_size_mb: int = Field(default=500, description="Maximum upload file size in MB")
-    allowed_video_extensions: list[str] = Field(
+    allowed_video_extensions: List[str] = Field(
         default=[".mp4", ".avi", ".mov", ".mkv", ".webm", ".flv"],
         description="Allowed video file extensions",
     )
@@ -59,9 +57,9 @@ class Settings(BaseSettings):
     llm_temperature: float = Field(default=0.2, ge=0.0, le=2.0, description="LLM temperature")
 
     # API security
-    auth_token: str | None = Field(default=None, description="Optional API authentication token")
+    auth_token: Optional[str] = Field(default=None, description="Optional API authentication token")
     enable_cors: bool = Field(default=False, description="Enable CORS")
-    cors_origins: list[str] = Field(default=["*"], description="CORS allowed origins")
+    cors_origins: List[str] = Field(default=["*"], description="CORS allowed origins")
 
     # Rate limiting
     enable_rate_limiting: bool = Field(default=True, description="Enable API rate limiting")
@@ -75,7 +73,7 @@ class Settings(BaseSettings):
     yolo_model: str = Field(default="yolov8n", description="YOLO model to use (yolov8n/s/m/l/x)")
     detection_confidence: float = Field(default=0.25, ge=0.0, le=1.0, description="YOLO detection confidence threshold")
     detection_iou: float = Field(default=0.45, ge=0.0, le=1.0, description="YOLO IoU threshold for NMS")
-    detection_device: str | None = Field(default=None, description="Device for detection (cpu/cuda/cuda:0, auto if None)")
+    detection_device: Optional[str] = Field(default=None, description="Device for detection (cpu/cuda/cuda:0, auto if None)")
 
     # Tracking settings
     tracking_max_age: int = Field(default=30, ge=1, description="Max frames to keep track alive without detections")
@@ -121,7 +119,7 @@ class Settings(BaseSettings):
 
 
 # Global settings instance
-_settings: Settings | None = None
+_settings: Optional[Settings] = None
 
 
 def get_settings() -> Settings:

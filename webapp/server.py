@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import contextlib
 import csv
 import json
@@ -8,7 +6,7 @@ import os
 import shutil
 import uuid
 from pathlib import Path
-from typing import Annotated, List, Tuple
+from typing import Annotated, Dict, List, Optional, Tuple, Union
 
 from fastapi import Depends, FastAPI
 from fastapi import File, Form, HTTPException, Request, UploadFile
@@ -52,7 +50,7 @@ load_presets(PRESETS_PATH)
 # Initialize rate limiter
 limiter = Limiter(key_func=get_remote_address)
 
-TOOLKIT_PROMPTS: dict[str, str] = {
+TOOLKIT_PROMPTS: Dict[str, str] = {
     "identify_players": (
         "Identify every player visible on the court, including team association, jersey color, jersey number, and likely role/position."
     ),
@@ -68,7 +66,7 @@ TOOLKIT_PROMPTS: dict[str, str] = {
 }
 
 
-def _public_url(path: Path | None) -> str | None:
+def _public_url(path: Optional[Path]) -> Optional[str]:
     if not path:
         return None
     try:
@@ -124,7 +122,7 @@ app.mount("/assets", StaticFiles(directory=SESSION_PATH), name="assets")
 templates = Jinja2Templates(directory="webapp/templates")
 
 
-def _coerce_bool(value: str | bool) -> bool:
+def _coerce_bool(value: Union[str, bool]) -> bool:
     if isinstance(value, bool):
         return value
     return str(value).lower() in {"1", "true", "on", "yes"}
@@ -170,7 +168,7 @@ async def partial_heatmap(request: Request) -> HTMLResponse:
 @app.get("/_partial/sessions", response_class=HTMLResponse)
 async def partial_sessions(
     request: Request,
-    settings: Settings = Depends(get_settings),
+    settings: Annotated[Settings, Depends(get_settings)],
 ) -> HTMLResponse:
     """Render the session management dashboard panel."""
     from session.service import SessionService
@@ -191,20 +189,18 @@ async def partial_sessions(
 async def analyze_htmx(
     request: Request,
     video: Annotated[UploadFile, File(...)],
-    prompt: str = Form(
-        "describe the visualized plays, describe each point, the sequence of events in the point, the touches in the point, broken down by who (color and roster number) on each team did what."
-    ),
-    endpoint: str = Form(...),
-    token: str = Form(""),
-    model: str = Form("Qwen/Qwen2.5-VL-32B-Instruct"),
-    fps: int = Form(3),
-    max_frames: int = Form(48),
-    max_pixels: int = Form(1048576),
-    max_tokens: int = Form(256),
-    temperature: float = Form(0.2),
-    jpeg_quality: int = Form(85),
-    tools: List[str] = Form([]),
-    current_settings: Settings = Depends(get_settings),
+    endpoint: Annotated[str, Form(...)],
+    prompt: Annotated[str, Form(...)] = "describe the visualized plays, describe each point, the sequence of events in the point, the touches in the point, broken down by who (color and roster number) on each team did what.",
+    token: Annotated[str, Form()] = "",
+    model: Annotated[str, Form()] = "Qwen/Qwen2.5-VL-32B-Instruct",
+    fps: Annotated[int, Form()] = 3,
+    max_frames: Annotated[int, Form()] = 48,
+    max_pixels: Annotated[int, Form()] = 1048576,
+    max_tokens: Annotated[int, Form()] = 256,
+    temperature: Annotated[float, Form()] = 0.2,
+    jpeg_quality: Annotated[int, Form()] = 85,
+    tools: Annotated[List[str], Form()] = [],
+    current_settings: Annotated[Settings, Depends(get_settings)],
 ):
     """
     Analyze volleyball video using vision-language model.
@@ -300,18 +296,16 @@ async def analyze_htmx(
                 except Exception:
                     continue
             if valid_pts:
-                out_dir = os.path.join(SESSION_DIR, "heatmaps")
-                os.makedirs(out_dir, exist_ok=True)
+                out_dir = SESSION_PATH / "heatmaps"
+                out_dir.mkdir(parents=True, exist_ok=True)
                 base_name = os.path.splitext(os.path.basename(video.filename))[0]
                 heatmap_img_path = Path(
                     render_heatmap(
                         valid_pts,
-                        os.path.join(
-                            out_dir, f"hm_{base_name}.png"
-                        ),
+                        str(out_dir / f"hm_{base_name}.png"),
                     )
                 )
-                csv_path = Path(out_dir) / f"hm_{base_name}.csv"
+                csv_path = out_dir / f"hm_{base_name}.csv"
                 with csv_path.open("w", newline="", encoding="utf-8") as fh:
                     writer = csv.writer(fh)
                     writer.writerow(["x", "y", "h"])
@@ -358,17 +352,17 @@ async def analyze_htmx(
 async def heatmap_pipeline(
     request: Request,
     video: Annotated[UploadFile, File(...)],
-    method: str = Form("auto"),
-    stride: int = Form(2),
-    smoothing: int = Form(3),
-    min_confidence: float = Form(0.05),
-    overlay: str = Form("true"),
-    renderers: List[str] | None = Form(None),
+    method: Annotated[str, Form()] = "auto",
+    stride: Annotated[int, Form()] = 2,
+    smoothing: Annotated[int, Form()] = 3,
+    min_confidence: Annotated[float, Form()] = 0.05,
+    overlay: Annotated[str, Form()] = "true",
+    renderers: Annotated[Optional[List[str]], Form()] = None,
 ) -> HTMLResponse:
-    temp_path = Path(SESSION_DIR) / f"pipeline_{uuid.uuid4().hex}_{video.filename}"
+    temp_path = SESSION_PATH / f"pipeline_{uuid.uuid4().hex}_{video.filename}"
     temp_path.write_bytes(await video.read())
 
-    run_dir = Path(SESSION_DIR) / "heatmaps" / f"run_{uuid.uuid4().hex}"
+    run_dir = SESSION_PATH / "heatmaps" / f"run_{uuid.uuid4().hex}"
     try:
         selected_renderers = [r for r in (renderers or []) if r]
         artifacts = run_heatmap_pipeline(
@@ -428,13 +422,13 @@ async def heatmap_pipeline(
 async def heatmap(
     request: Request,
     csvfile: Annotated[UploadFile, File(...)],
-    theme: str = Form("dark"),
-    colormap: str = Form("magma"),
-    density_scale: float = Form(1.0),
-    density_sigma: float = Form(1.0),
-    show_contours: str = Form("True"),
-    draw_trail: str = Form("True"),
-    trail_width_px: float = Form(10.0),
+    theme: Annotated[str, Form()] = "dark",
+    colormap: Annotated[str, Form()] = "magma",
+    density_scale: Annotated[float, Form()] = 1.0,
+    density_sigma: Annotated[float, Form()] = 1.0,
+    show_contours: Annotated[str, Form()] = "True",
+    draw_trail: Annotated[str, Form()] = "True",
+    trail_width_px: Annotated[float, Form()] = 10.0,
 ) -> FileResponse:
     _ = request
     data = (await csvfile.read()).decode("utf-8").splitlines()
@@ -448,11 +442,8 @@ async def heatmap(
             continue
         points.append((float(row[0]), float(row[1]), float(row[2])))
 
-    out_path = os.path.join(
-        SESSION_DIR,
-        "heatmaps",
-        f"heatmap_{os.path.basename(csvfile.filename)}.png",
-    )
+    out_path = SESSION_PATH / "heatmaps" / f"heatmap_{os.path.basename(csvfile.filename)}.png"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     try:
         saved_path = render_heatmap_sexy(
             points,
@@ -479,12 +470,12 @@ async def heatmap(
 @app.post("/_api/analytics/process_video")
 async def process_video_with_tracking(
     video: Annotated[UploadFile, File(...)],
-    session_id: str = Form(...),
-    enable_pose: bool = Form(True),
-    enable_overlays: bool = Form(True),
-    yolo_model: str = Form("yolov8n"),
-    detection_confidence: float = Form(0.25),
-    settings: Settings = Depends(get_settings),
+    session_id: Annotated[str, Form(...)],
+    enable_pose: Annotated[bool, Form()] = True,
+    enable_overlays: Annotated[bool, Form()] = True,
+    yolo_model: Annotated[str, Form()] = "yolov8n",
+    detection_confidence: Annotated[float, Form()] = 0.25,
+    settings: Annotated[Settings, Depends(get_settings)],
 ):
     """
     Process video with YOLO detection, tracking, and pose estimation.
@@ -569,7 +560,7 @@ async def process_video_with_tracking(
 
 @app.get("/_api/analytics/stats")
 async def get_analytics_stats(
-    session_id: str | None = None,
+    session_id: Optional[str] = None,
 ):
     """
     Get comprehensive player statistics.
@@ -612,7 +603,7 @@ async def get_analytics_stats(
 
 @app.post("/_api/analytics/export")
 async def export_analytics(
-    session_id: str = Form(...),
+    session_id: Annotated[str, Form(...)],
 ):
     """
     Export analytics data as CSV.

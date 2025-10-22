@@ -5,11 +5,9 @@ This module provides RESTful endpoints for creating, reading, updating,
 and deleting volleyball analysis sessions.
 """
 
-from __future__ import annotations
-
 import logging
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -40,17 +38,17 @@ class SessionUpdateRequest(BaseModel):
     """Request model for updating session metadata."""
     title: Optional[str] = None
     venue: Optional[str] = None
-    meta: Optional[dict] = None
+    meta: Optional[Dict] = None
 
 
 class SessionDetailsResponse(BaseModel):
     """Detailed session information including clips and stats."""
     session: schemas.SessionOut
     clips: List[schemas.ClipOut]
-    teams: dict[str, Optional[str]]
-    rosters: dict[str, List[schemas.RosterEntry]]
+    teams: Dict[str, Optional[str]]
+    rosters: Dict[str, List[schemas.RosterEntry]]
     event_count: int
-    rollup_summary: dict
+    rollup_summary: Dict
 
 
 class BulkDeleteRequest(BaseModel):
@@ -277,7 +275,7 @@ async def attach_artifact(
     session_id: str,
     artifact_type: str,
     file_path: str,
-    metadata: dict = {},
+    metadata: Dict = {},
     service: SessionService = Depends(get_session_service),
 ) -> dict:
     """

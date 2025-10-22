@@ -1,6 +1,4 @@
 """Input validation utilities."""
-from __future__ import annotations
-
 import secrets
 import tempfile
 from pathlib import Path
