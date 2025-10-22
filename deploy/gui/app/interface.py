@@ -7,41 +7,51 @@ from html import escape
 from .controller import GuiController
 
 CUSTOM_CSS = """
+body {
+    background-color: #e5e7eb;
+    color: #111827;
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    line-height: 1.6;
+}
+
 .gradio-container {
     max-width: 1140px !important;
     margin: 0 auto;
-    padding: 2.5rem 1.75rem 3rem;
-    background: radial-gradient(circle at 10% 20%, rgba(244,114,182,0.25), transparent 55%),
-                radial-gradient(circle at 90% 10%, rgba(129,140,248,0.3), transparent 45%),
-                linear-gradient(135deg, #020617 0%, #0f172a 45%, #1e293b 100%);
-    color: #0f172a;
-    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-}
-
-body {
-    background-color: #020617;
+    padding: 2.25rem 1.75rem 3rem;
+    background-color: #f8fafc;
+    color: inherit;
 }
 
 .hero {
-    background: linear-gradient(135deg, rgba(244,114,182,0.15), rgba(14,165,233,0.15));
-    border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 1.25rem;
-    padding: 1.75rem 2rem;
-    color: #f8fafc;
-    box-shadow: 0 30px 80px rgba(15,23,42,0.35);
-    backdrop-filter: blur(14px);
+    background-color: #ffffff;
+    border: 1px solid #d1d5db;
+    border-radius: 1rem;
+    padding: 2rem;
+    color: #111827;
+}
+
+.hero__eyebrow {
+    display: inline-block;
+    font-size: 0.75rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-weight: 600;
+    color: #1d4ed8;
+    margin-bottom: 0.85rem;
 }
 
 .hero h1 {
     margin: 0;
     font-size: 2.25rem;
     font-weight: 700;
+    line-height: 1.2;
+    color: #0f172a;
 }
 
 .hero p {
     margin-top: 0.75rem;
     max-width: 640px;
-    color: rgba(248,250,252,0.82);
+    color: #374151;
     font-size: 1.05rem;
 }
 
@@ -49,17 +59,15 @@ body {
     margin-top: 1.75rem;
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 1rem;
+    gap: 1.25rem;
 }
 
 .feature {
     padding: 1.25rem 1.4rem;
-    border-radius: 1rem;
-    border: 1px solid rgba(255,255,255,0.08);
-    background: rgba(15,23,42,0.6);
-    color: #e2e8f0;
-    backdrop-filter: blur(12px);
-    box-shadow: 0 12px 35px rgba(15,23,42,0.35);
+    border-radius: 0.9rem;
+    border: 1px solid #d1d5db;
+    background-color: #ffffff;
+    color: #1f2937;
 }
 
 .feature__eyebrow {
@@ -67,7 +75,8 @@ body {
     font-size: 0.75rem;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: rgba(244,114,182,0.7);
+    font-weight: 600;
+    color: #1d4ed8;
     margin-bottom: 0.5rem;
 }
 
@@ -75,7 +84,13 @@ body {
     margin: 0 0 0.35rem 0;
     font-size: 1.25rem;
     font-weight: 600;
-    color: #f1f5f9;
+    color: #0f172a;
+}
+
+.feature__body {
+    margin: 0;
+    color: #374151;
+    font-size: 0.95rem;
 }
 
 .main-grid {
@@ -84,20 +99,11 @@ body {
 }
 
 .card {
-    border-radius: 1.3rem;
+    border-radius: 1rem;
     padding: 1.75rem;
-    border: 1px solid rgba(255,255,255,0.09);
-    background: rgba(248,250,252,0.88);
-    box-shadow: 0 18px 45px rgba(15,23,42,0.35);
-}
-
-.card--status {
-    background: rgba(12,18,32,0.82);
-    color: #e2e8f0;
-}
-
-.card--status h3 {
-    color: #f8fafc;
+    border: 1px solid #d1d5db;
+    background-color: #ffffff;
+    color: #1f2937;
 }
 
 .card h3 {
@@ -109,77 +115,108 @@ body {
 
 .card__subtitle {
     margin-bottom: 1.25rem;
-    color: rgba(15,23,42,0.75);
+    color: #4b5563;
+}
+
+.card--status {
+    background-color: #0f172a;
+    border-color: #1f2937;
+    color: #f8fafc;
+}
+
+.card--status h3 {
+    color: #f8fafc;
 }
 
 .card--status .card__subtitle {
-    color: rgba(226,232,240,0.75);
+    color: #cbd5f5;
 }
 
 .alert {
     margin-top: 1rem;
-    border-radius: 0.9rem;
-    padding: 0.95rem 1.15rem;
+    border-radius: 0.75rem;
+    padding: 0.9rem 1rem;
     font-weight: 600;
-    backdrop-filter: blur(12px);
-    border: 1px solid rgba(255,255,255,0.12);
+    border: 1px solid transparent;
 }
 
 .alert--success {
-    background: rgba(34,197,94,0.16);
-    color: #14532d;
-    border-color: rgba(74,222,128,0.4);
+    background-color: #ecfdf3;
+    border-color: #0f5132;
+    color: #0f5132;
 }
 
 .alert--warning {
-    background: rgba(250,204,21,0.18);
-    color: #854d0e;
-    border-color: rgba(250,204,21,0.45);
+    background-color: #fef3c7;
+    border-color: #92400e;
+    color: #92400e;
 }
 
 .alert--danger {
-    background: rgba(248,113,113,0.2);
+    background-color: #fee2e2;
+    border-color: #7f1d1d;
     color: #7f1d1d;
-    border-color: rgba(248,113,113,0.45);
 }
 
 .alert--info {
-    background: rgba(191,219,254,0.25);
+    background-color: #dbeafe;
+    border-color: #1d4ed8;
     color: #1d4ed8;
-    border-color: rgba(147,197,253,0.45);
 }
 
 .status-json {
     max-height: 320px;
     overflow-y: auto;
-    border-radius: 0.9rem;
+    border-radius: 0.75rem;
+    border: 1px solid #1f2937;
 }
 
 .status-json > div {
-    background: rgba(15,23,42,0.92);
+    background-color: #111827;
 }
 
 .status-json pre {
-    color: #e2e8f0 !important;
+    color: #f8fafc !important;
 }
 
 .gradio-button.primary {
     font-weight: 600;
+    background-color: #1f2937;
+    border: 1px solid #0f172a;
+    color: #f8fafc;
+}
+
+.gradio-button.secondary {
+    font-weight: 600;
+    border: 1px solid #1f2937;
+    color: #1f2937;
+    background-color: transparent;
+}
+
+.hero code,
+.feature__body code,
+.form-footer code {
+    background-color: #e5e7eb;
+    color: #111827;
+    padding: 0.1rem 0.3rem;
+    border-radius: 0.25rem;
+    font-size: 0.85em;
 }
 
 .form-footer {
     margin-top: 1.25rem;
     font-size: 0.9rem;
-    color: rgba(15,23,42,0.6);
+    color: #4b5563;
 }
 
 .card--status .form-footer {
-    color: rgba(226,232,240,0.65);
+    color: #e2e8f0;
 }
 """
 
 HERO_HTML = """
 <div class="hero">
+  <span class="hero__eyebrow">Operations Console</span>
   <h1>HotMama Vision Console</h1>
   <p>Queue new computer-vision runs, watch the refreshed worker pipeline in motion, and retrieve artifacts without leaving the browser.</p>
 </div>
@@ -190,17 +227,17 @@ FEATURE_GRID_HTML = """
   <div class="feature">
     <span class="feature__eyebrow">Gateway</span>
     <h3>FastAPI v1</h3>
-    <p>Submissions flow straight into the Redis queue module we just refactored for resiliency.</p>
+    <p class="feature__body">Submissions flow straight into the Redis queue module we just refactored for resiliency.</p>
   </div>
   <div class="feature">
     <span class="feature__eyebrow">Workers</span>
     <h3>Vision Runtime</h3>
-    <p>The torch + OpenCV stack ingests uploads and produces session artifacts with deterministic seeds.</p>
+    <p class="feature__body">The torch + OpenCV stack ingests uploads and produces session artifacts with deterministic seeds.</p>
   </div>
   <div class="feature">
     <span class="feature__eyebrow">Storage</span>
     <h3>Shared Sessions</h3>
-    <p>Artifacts land in <code>/sessions</code> so the GUI can serve them back instantly after completion.</p>
+    <p class="feature__body">Artifacts land in <code>/sessions</code> so the GUI can serve them back instantly after completion.</p>
   </div>
 </div>
 """
