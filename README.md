@@ -16,6 +16,7 @@ The installer clones the repository, probes hardware, installs Docker prerequisi
 deploy/
   api/           FastAPI gateway (Python 3.11, CPU)
   worker-vision/ Vision workers (CPU + CUDA targets)
+  gui/           Gradio control surface (Python 3.11, CPU)
   scripts/       Shared runtime helpers (Redis wait, etc.)
   base-images/   Documentation for base container pins
 ```
@@ -28,6 +29,7 @@ Supporting infrastructure:
   - `gpu` → API + Redis + CUDA worker (auto-selected when NVIDIA GPUs detected)
   - `rocm` → reserved for future AMD builds (marked experimental)
 - Artifacts are persisted under `./sessions/` and shared between services.
+- Optional **GUI**: visit `http://localhost:7860` (default) to queue jobs and inspect artifacts.
 
 ## 🔁 Runtime Flow
 
@@ -66,6 +68,7 @@ pip install fastapi[all] pytest ruff black mypy  # development extras
 ```bash
 docker compose up -d --build
 docker compose logs -f worker-vision-cpu
+# GUI available at http://localhost:7860 once services are healthy
 ```
 
 GPU profile (requires NVIDIA Container Toolkit):
@@ -106,6 +109,8 @@ Run the integration smoke test (uses Docker):
 | `REDIS_STATUS_PREFIX` | `hotmama:job` | Prefix for job metadata hashes |
 | `ARTIFACT_DIR` | `/app/sessions` | Shared artifact directory |
 | `LOG_JSON` | `0` | Emit JSON logs when set to `1` |
+| `GUI_API_BASE_URL` | `http://api:8000/v1` | GUI → API endpoint |
+| `GUI_PORT` | `7860` | GUI listening port |
 
 ## 🧭 Troubleshooting
 

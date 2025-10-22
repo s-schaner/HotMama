@@ -33,6 +33,24 @@ services:
     restart: unless-stopped
     profiles: ["default", "gpu"]
 
+  gui:
+    build:
+      context: .
+      dockerfile: deploy/gui/Dockerfile
+    depends_on:
+      api:
+        condition: service_started
+    env_file:
+      - .env
+    environment:
+      GUI_API_BASE_URL: ${GUI_API_BASE_URL:-http://api:8000/v1}
+    ports:
+      - "7860:7860"
+    volumes:
+      - ./sessions:/app/sessions
+    restart: unless-stopped
+    profiles: ["default", "gpu"]
+
   worker-vision-cpu:
     build:
       context: .

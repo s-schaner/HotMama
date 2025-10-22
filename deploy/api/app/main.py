@@ -18,7 +18,7 @@ LOGGER = logging.getLogger("hotmama.api")
 
 
 @asynccontextmanager
-def lifespan(app: FastAPI) -> AsyncIterator[None]:
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     log_format = (
         "%(message)s"
