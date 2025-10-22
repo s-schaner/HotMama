@@ -4,7 +4,6 @@ import os
 import platform
 import shutil
 import subprocess
-import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Sequence, Tuple
@@ -94,7 +93,9 @@ def detect_graphics_stack() -> HardwareReport:
     rocm_smi = shutil.which("rocm-smi")
     if rocm_smi:
         report.vendor = "amd"
-        code, out, err = _run_command([rocm_smi, "--showproductname", "--showdriverversion"])
+        code, out, err = _run_command(
+            [rocm_smi, "--showproductname", "--showdriverversion"]
+        )
         if code == 0 and out:
             for line in out.splitlines():
                 line = line.strip()
@@ -235,7 +236,9 @@ PROFILES: dict[str, DependencyProfile] = {
 }
 
 
-def resolve_profile(preferred: str | None = None, hardware: HardwareReport | None = None) -> tuple[DependencyProfile, HardwareReport]:
+def resolve_profile(
+    preferred: str | None = None, hardware: HardwareReport | None = None
+) -> tuple[DependencyProfile, HardwareReport]:
     hardware = hardware or detect_graphics_stack()
     key = (preferred or "auto").lower()
     if key in {"auto", "", "default"}:
@@ -246,7 +249,9 @@ def resolve_profile(preferred: str | None = None, hardware: HardwareReport | Non
     return PROFILES[key], hardware
 
 
-def python_version_supported(profile: DependencyProfile, version_info: tuple[int, int, int]) -> bool:
+def python_version_supported(
+    profile: DependencyProfile, version_info: tuple[int, int, int]
+) -> bool:
     minimum = profile.python_min
     maximum = profile.python_max
     if version_info[: len(minimum)] < minimum:
@@ -256,7 +261,9 @@ def python_version_supported(profile: DependencyProfile, version_info: tuple[int
     return True
 
 
-def format_environment_summary(profile: DependencyProfile, hardware: HardwareReport) -> List[str]:
+def format_environment_summary(
+    profile: DependencyProfile, hardware: HardwareReport
+) -> List[str]:
     lines = [f"Dependency profile: {profile.description} ({profile.key})"]
     lines.extend(hardware.summary_lines())
     lines.append(f"Python requirement: {profile.python_requirement()}")

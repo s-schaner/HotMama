@@ -6,11 +6,10 @@ and deleting volleyball analysis sessions.
 """
 
 import logging
-from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
@@ -36,29 +35,33 @@ def get_session_service(settings: Settings = Depends(get_settings)) -> SessionSe
 
 class SessionUpdateRequest(BaseModel):
     """Request model for updating session metadata."""
+
     title: Optional[str] = None
     venue: Optional[str] = None
-    meta: Optional[Dict] = None
+    meta: Optional[Dict[str, Any]] = None
 
 
 class SessionDetailsResponse(BaseModel):
     """Detailed session information including clips and stats."""
+
     session: schemas.SessionOut
     clips: List[schemas.ClipOut]
     teams: Dict[str, Optional[str]]
     rosters: Dict[str, List[schemas.RosterEntry]]
     event_count: int
-    rollup_summary: Dict
+    rollup_summary: Dict[str, Any]
 
 
 class BulkDeleteRequest(BaseModel):
     """Request model for bulk session deletion."""
-    session_ids: List[str] = Field(..., min_items=1)
+
+    session_ids: List[str] = Field(..., min_length=1)
 
 
 # ============================================================================
 # Session CRUD Endpoints
 # ============================================================================
+
 
 @router.post("/", response_model=dict)
 async def create_session(
@@ -154,7 +157,7 @@ async def get_session(
     """
     try:
         session_data = service.load_session(session_id)
-        return session_data
+        return SessionDetailsResponse(**session_data)
     except NotFoundError:
         raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
     except Exception as exc:
@@ -270,6 +273,7 @@ async def bulk_delete_sessions(
 # Artifacts & Exports
 # ============================================================================
 
+
 @router.post("/{session_id}/artifacts", response_model=dict)
 async def attach_artifact(
     session_id: str,
@@ -344,6 +348,7 @@ async def export_session(
 # ============================================================================
 # UI Partials (HTMX endpoints)
 # ============================================================================
+
 
 @router.get("/ui/dashboard", response_class=HTMLResponse)
 async def session_dashboard(

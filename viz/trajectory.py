@@ -60,7 +60,9 @@ def _require_cv() -> None:
         ) from _IMPORT_ERROR
 
 
-def _px_to_meters(x_px: float, y_px: float, frame_w: float, frame_h: float) -> tuple[float, float]:
+def _px_to_meters(
+    x_px: float, y_px: float, frame_w: float, frame_h: float
+) -> tuple[float, float]:
     if frame_w <= 0 or frame_h <= 0:
         return 0.0, 0.0
     return (x_px / frame_w) * COURT_WIDTH, (y_px / frame_h) * COURT_LENGTH
@@ -69,7 +71,9 @@ def _px_to_meters(x_px: float, y_px: float, frame_w: float, frame_h: float) -> t
 class _BaseDetector:
     name: str = "base"
 
-    def setup(self, frame_shape: tuple[int, int, int]) -> None:  # pragma: no cover - virtual
+    def setup(
+        self, frame_shape: tuple[int, int, int]
+    ) -> None:  # pragma: no cover - virtual
         _ = frame_shape
 
     def detect(
@@ -96,9 +100,7 @@ class _BackgroundDetector(_BaseDetector):
             self.setup(frame.shape)
         mask = self.subtractor.apply(frame)
         mask = cv2.GaussianBlur(mask, (5, 5), 0)
-        _, thresh = cv2.threshold(
-            mask, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
-        )
+        _, thresh = cv2.threshold(mask, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
         kernel = np.ones((3, 3), dtype=np.uint8)
         thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel, iterations=1)
         contours, _ = cv2.findContours(
@@ -109,9 +111,7 @@ class _BackgroundDetector(_BaseDetector):
 
         frame_area = frame.shape[0] * frame.shape[1]
         candidates = [
-            c
-            for c in contours
-            if 8 <= cv2.contourArea(c) <= max(frame_area * 0.02, 12)
+            c for c in contours if 8 <= cv2.contourArea(c) <= max(frame_area * 0.02, 12)
         ]
         if not candidates:
             return None
@@ -138,9 +138,7 @@ class _ColorDetector(_BaseDetector):
         upper = np.array([28, 255, 255], dtype=np.uint8)
         mask = cv2.inRange(hsv, lower, upper)
         mask = cv2.GaussianBlur(mask, (9, 9), 0)
-        contours, _ = cv2.findContours(
-            mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-        )
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         if not contours:
             return None
         contour = max(contours, key=cv2.contourArea)
@@ -153,7 +151,7 @@ class _ColorDetector(_BaseDetector):
         cx = int(m["m10"] / m["m00"])
         cy = int(m["m01"] / m["m00"])
         confidence = float(min(1.0, 0.3 + (area / 4000.0)))
-        height_est = float(min(3.0, 0.1 + area ** 0.5 * 0.06))
+        height_est = float(min(3.0, 0.1 + area**0.5 * 0.06))
         return cx, cy, height_est, confidence
 
 
@@ -173,8 +171,7 @@ class _BrightSpotDetector(_BaseDetector):
 
 
 _DETECTOR_REGISTRY: Dict[str, type[_BaseDetector]] = {
-    cls.name: cls
-    for cls in (_BackgroundDetector, _ColorDetector, _BrightSpotDetector)
+    cls.name: cls for cls in (_BackgroundDetector, _ColorDetector, _BrightSpotDetector)
 }
 
 
@@ -327,7 +324,9 @@ def run_heatmap_pipeline(
             opts = {}
         out_path = output_dir / f"heatmap_{strategy}.png"
         try:
-            path = render_with_strategy(strategy, [(p.x, p.y, p.h) for p in points], out_path, **opts)
+            path = render_with_strategy(
+                strategy, [(p.x, p.y, p.h) for p in points], out_path, **opts
+            )
         except Exception as exc:  # pragma: no cover - runtime fallback
             logs.append(f"Renderer {strategy} failed: {exc}")
         else:
@@ -385,7 +384,9 @@ def _render_overlay_video(
     while success:
         pos = px_positions.get(frame_idx, last_pos)
         if pos:
-            cv2.circle(frame, pos, 12, (0, 120, 255), thickness=-1, lineType=cv2.LINE_AA)
+            cv2.circle(
+                frame, pos, 12, (0, 120, 255), thickness=-1, lineType=cv2.LINE_AA
+            )
             last_pos = pos
         writer.write(frame)
         success, frame = cap.read()
@@ -428,14 +429,18 @@ def _render_court_video(
                 thickness=2,
                 lineType=cv2.LINE_AA,
             )
-        cv2.circle(frame_img, (cx, cy), 10, (255, 196, 0), thickness=-1, lineType=cv2.LINE_AA)
+        cv2.circle(
+            frame_img, (cx, cy), 10, (255, 196, 0), thickness=-1, lineType=cv2.LINE_AA
+        )
         writer.write(cv2.cvtColor(frame_img, cv2.COLOR_RGB2BGR))
 
     writer.release()
     return out_path if out_path.exists() else None
 
 
-def _render_trail_snapshot(output_dir: Path, points: List[TrajectoryPoint]) -> Path | None:
+def _render_trail_snapshot(
+    output_dir: Path, points: List[TrajectoryPoint]
+) -> Path | None:
     if not points:
         return None
     width = int(COURT_WIDTH * CANVAS_SCALE)
@@ -446,7 +451,9 @@ def _render_trail_snapshot(output_dir: Path, points: List[TrajectoryPoint]) -> P
         cx = int(point.x * CANVAS_SCALE)
         cy = int(point.y * CANVAS_SCALE)
         poly.append((cx, cy))
-        cv2.circle(image, (cx, cy), 8, (255, 196, 0), thickness=-1, lineType=cv2.LINE_AA)
+        cv2.circle(
+            image, (cx, cy), 8, (255, 196, 0), thickness=-1, lineType=cv2.LINE_AA
+        )
     if len(poly) >= 2:
         cv2.polylines(
             image,
@@ -459,4 +466,3 @@ def _render_trail_snapshot(output_dir: Path, points: List[TrajectoryPoint]) -> P
     out_path = output_dir / "trajectory_snapshot.png"
     cv2.imwrite(str(out_path), cv2.cvtColor(image, cv2.COLOR_RGB2BGR))
     return out_path
-

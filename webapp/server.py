@@ -5,7 +5,6 @@ import csv
 import json
 import logging
 import os
-import shutil
 import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Iterator, List, Tuple
@@ -503,8 +502,8 @@ async def process_video_with_tracking(
     from ingest.video_pipeline import VideoProcessingPipeline, PipelineConfig
     from viz.overlays import OverlayConfig
 
-    # Validate video upload
-    validate_video_upload(video, settings)
+    # Validate video upload and capture content
+    video_bytes = await validate_video_upload(video, settings)
 
     # Create session directory
     session_dir = SESSION_PATH / session_id
@@ -515,8 +514,7 @@ async def process_video_with_tracking(
     video_path = session_dir / "clips" / video_filename
     video_path.parent.mkdir(parents=True, exist_ok=True)
 
-    with open(video_path, "wb") as f:
-        shutil.copyfileobj(video.file, f)
+    video_path.write_bytes(video_bytes)
 
     # Configure pipeline
     overlay_config = OverlayConfig(

@@ -1,7 +1,7 @@
 """Async LLM client with improved error handling and retry logic."""
+
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import Any
 
@@ -143,29 +143,34 @@ class AsyncLLMClient:
         Returns:
             API response as dictionary
         """
-        messages = []
+        messages: list[dict[str, Any]] = []
 
         if system_prompt:
-            messages.append({
-                "role": "system",
-                "content": [{"type": "text", "text": system_prompt}],
-            })
+            messages.append(
+                {
+                    "role": "system",
+                    "content": [{"type": "text", "text": system_prompt}],
+                }
+            )
 
-        user_content = [{"type": "text", "text": text}]
-        user_content.extend([
-            {"type": "image_url", "image_url": {"url": img}}
-            for img in images
-        ])
+        user_content: list[dict[str, Any]] = [{"type": "text", "text": text}]
+        user_content.extend(
+            [{"type": "image_url", "image_url": {"url": img}} for img in images]
+        )
 
-        messages.append({
-            "role": "user",
-            "content": user_content,
-        })
+        messages.append(
+            {
+                "role": "user",
+                "content": user_content,
+            }
+        )
 
         return await self.chat(messages, **kwargs)
 
 
-async def test_connection(endpoint: str, model: str, api_key: str | None = None) -> bool:
+async def test_connection(
+    endpoint: str, model: str, api_key: str | None = None
+) -> bool:
     """
     Test connection to LLM endpoint.
 

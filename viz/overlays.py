@@ -32,30 +32,25 @@ class OverlayConfig:
         draw_track_ids: bool = True,
         id_font_scale: float = 0.6,
         id_thickness: int = 2,
-
         # Pose options
         draw_pose: bool = True,
         pose_point_radius: int = 4,
         pose_line_thickness: int = 2,
         pose_color: Tuple[int, int, int] = (255, 0, 255),  # BGR magenta
-
         # Heatmap options
         draw_heatmap: bool = True,
         heatmap_alpha: float = 0.3,
         heatmap_colormap: int = cv2.COLORMAP_JET,
-
         # Trail options
         draw_trails: bool = True,
         trail_length: int = 30,
         trail_thickness: int = 2,
         trail_fade: bool = True,
-
         # Stats overlay
         draw_stats: bool = False,
         stats_position: Tuple[int, int] = (10, 30),
         stats_font_scale: float = 0.5,
         stats_thickness: int = 1,
-
         # Performance
         downsample_pose: bool = False,
         antialiasing: bool = True,
@@ -110,19 +105,16 @@ class VideoOverlay:
         ("nose", "right_eye"),
         ("left_eye", "left_ear"),
         ("right_eye", "right_ear"),
-
         # Upper body
         ("left_shoulder", "right_shoulder"),
         ("left_shoulder", "left_elbow"),
         ("left_elbow", "left_wrist"),
         ("right_shoulder", "right_elbow"),
         ("right_elbow", "right_wrist"),
-
         # Torso
         ("left_shoulder", "left_hip"),
         ("right_shoulder", "right_hip"),
         ("left_hip", "right_hip"),
-
         # Lower body
         ("left_hip", "left_knee"),
         ("left_knee", "left_ankle"),
@@ -132,15 +124,15 @@ class VideoOverlay:
 
     # Color palette for different track IDs
     TRACK_COLORS = [
-        (255, 0, 0),    # Red
-        (0, 255, 0),    # Green
-        (0, 0, 255),    # Blue
+        (255, 0, 0),  # Red
+        (0, 255, 0),  # Green
+        (0, 0, 255),  # Blue
         (255, 255, 0),  # Cyan
         (255, 0, 255),  # Magenta
         (0, 255, 255),  # Yellow
-        (128, 0, 0),    # Dark red
-        (0, 128, 0),    # Dark green
-        (0, 0, 128),    # Dark blue
+        (128, 0, 0),  # Dark red
+        (0, 128, 0),  # Dark green
+        (0, 0, 128),  # Dark blue
         (128, 128, 0),  # Olive
         (128, 0, 128),  # Purple
         (0, 128, 128),  # Teal
@@ -279,7 +271,10 @@ class VideoOverlay:
                     end_kp = kp_dict[end_name]
 
                     # Check visibility
-                    if start_kp.get("visibility", 0) > 0.5 and end_kp.get("visibility", 0) > 0.5:
+                    if (
+                        start_kp.get("visibility", 0) > 0.5
+                        and end_kp.get("visibility", 0) > 0.5
+                    ):
                         start_pt = (int(start_kp["x"]), int(start_kp["y"]))
                         end_pt = (int(end_kp["x"]), int(end_kp["y"]))
 
@@ -479,7 +474,9 @@ class HeatmapGenerator:
 
         logger.info(f"HeatmapGenerator initialized: size={frame_size}")
 
-    def update(self, positions: List[Tuple[int, int]], weights: Optional[List[float]] = None):
+    def update(
+        self, positions: List[Tuple[int, int]], weights: Optional[List[float]] = None
+    ):
         """
         Update heatmap with new positions.
 

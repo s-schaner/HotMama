@@ -12,13 +12,12 @@ Combines:
 from __future__ import annotations
 
 import logging
-from typing import Optional, Dict, List, Callable, Any
-from pathlib import Path
+from typing import Optional, Dict, List, Callable
 import numpy as np
 import cv2
 from dataclasses import dataclass, field
 
-from ingest.detector_rt import DetectorRunner, DetectionResult
+from ingest.detector_rt import DetectorRunner
 from ingest.tracker import PlayerTracker, Track
 from ingest.pose import PoseEstimator, PoseResult
 from viz.overlays import VideoOverlay, OverlayConfig, HeatmapGenerator

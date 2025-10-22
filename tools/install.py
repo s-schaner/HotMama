@@ -58,6 +58,7 @@ def flash_attn_supported(torch_ver: str, cuda_ver: str, sm: str) -> bool:
         return True
     return False
 
+
 LOG_PATH = Path(__file__).with_name("install.log")
 
 
@@ -103,7 +104,9 @@ class InstallReport:
         for pkg, msg in self.failure.items():
             _log(f"❌ {pkg}: {msg}")
         if self.failure:
-            _log("\nSome packages failed to install. See install.log for full diagnostics.")
+            _log(
+                "\nSome packages failed to install. See install.log for full diagnostics."
+            )
 
 
 def run_pip(args: Sequence[str]) -> subprocess.CompletedProcess:
@@ -138,7 +141,9 @@ def attempt_install(package: Sequence[str] | str, report: InstallReport) -> bool
     return success
 
 
-def _format_py_requirement(min_version: tuple[int, int], max_version: tuple[int, int] | None) -> str:
+def _format_py_requirement(
+    min_version: tuple[int, int], max_version: tuple[int, int] | None
+) -> str:
     minimum = ".".join(str(v) for v in min_version)
     if not max_version:
         return f">= {minimum}"
@@ -276,6 +281,7 @@ def install(profile_key: str = "auto", attempt_driver_adjust: bool = False) -> i
     check_imports(list(profile.import_checks.keys()), report, profile.import_checks)
 
     return finalize(report, 0 if not report.failure else 1)
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="VolleySense dependency installer")

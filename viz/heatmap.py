@@ -34,7 +34,9 @@ CANVAS_SCALE = 40
 COURT_W = float(COURT_WIDTH)
 COURT_L = float(COURT_LENGTH)
 
-_HAS_SEXY_DEPS = all(obj is not None for obj in (np, matplotlib, plt, LinearSegmentedColormap))
+_HAS_SEXY_DEPS = all(
+    obj is not None for obj in (np, matplotlib, plt, LinearSegmentedColormap)
+)
 
 HeatmapRenderer = Callable[[Iterable[Tuple[float, float, float]], Path], Path]
 
@@ -60,7 +62,9 @@ def draw_court_background(width: int, height: int) -> list[list[Tuple[int, int, 
     return canvas
 
 
-def _color_for_height(height: float, min_h: float, max_h: float) -> Tuple[int, int, int]:
+def _color_for_height(
+    height: float, min_h: float, max_h: float
+) -> Tuple[int, int, int]:
     if max_h == min_h:
         ratio = 0.0
     else:
@@ -71,7 +75,9 @@ def _color_for_height(height: float, min_h: float, max_h: float) -> Tuple[int, i
     return r, max(0, min(255, g)), b
 
 
-def _draw_circle(canvas, cx: int, cy: int, radius: int, color: Tuple[int, int, int]) -> None:
+def _draw_circle(
+    canvas, cx: int, cy: int, radius: int, color: Tuple[int, int, int]
+) -> None:
     height = len(canvas)
     width = len(canvas[0])
     for y in range(cy - radius, cy + radius + 1):
@@ -80,7 +86,7 @@ def _draw_circle(canvas, cx: int, cy: int, radius: int, color: Tuple[int, int, i
         for x in range(cx - radius, cx + radius + 1):
             if x < 0 or x >= width:
                 continue
-            if (x - cx) ** 2 + (y - cy) ** 2 <= radius ** 2:
+            if (x - cx) ** 2 + (y - cy) ** 2 <= radius**2:
                 canvas[y][x] = color
 
 
@@ -90,7 +96,12 @@ def _write_png(canvas: list[list[Tuple[int, int, int]]], path: Path) -> None:
     signature = b"\x89PNG\r\n\x1a\n"
 
     def chunk(tag: bytes, data: bytes) -> bytes:
-        return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
+        return (
+            struct.pack(">I", len(data))
+            + tag
+            + data
+            + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
+        )
 
     ihdr = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
     raw_rows = []
@@ -104,7 +115,9 @@ def _write_png(canvas: list[list[Tuple[int, int, int]]], path: Path) -> None:
     path.write_bytes(png)
 
 
-def render_heatmap(points: Iterable[Tuple[float, float, float]], output_path: Path) -> Path:
+def render_heatmap(
+    points: Iterable[Tuple[float, float, float]], output_path: Path
+) -> Path:
     pts = list(points)
     if not pts:
         raise ValueError("No points provided for heatmap")
@@ -143,7 +156,9 @@ def render_heatmap_cv(
     dens = _blur(grid, sigma)
     dens = _normalize(dens)
 
-    court_canvas = draw_court_background(COURT_WIDTH * CANVAS_SCALE, COURT_LENGTH * CANVAS_SCALE)
+    court_canvas = draw_court_background(
+        COURT_WIDTH * CANVAS_SCALE, COURT_LENGTH * CANVAS_SCALE
+    )
     bg = _canvas_to_bgr(court_canvas)
 
     dens_uint8 = np.clip(dens * 255.0, 0, 255).astype(np.uint8)
@@ -155,11 +170,20 @@ def render_heatmap_cv(
 
     if trail:
         heights = pts[:, 2]
-        h_norm = _normalize(heights.reshape(-1, 1)).ravel() if np.max(heights) > 0 else np.zeros(len(pts))
+        h_norm = (
+            _normalize(heights.reshape(-1, 1)).ravel()
+            if np.max(heights) > 0
+            else np.zeros(len(pts))
+        )
         for (x, y, _), hn in zip(pts, h_norm):
             cx = int(x * CANVAS_SCALE)
             cy = int(y * CANVAS_SCALE)
-            color = tuple(int(c) for c in cv2.applyColorMap(np.array([[int(hn * 255)]], dtype=np.uint8), cv_cmap)[0, 0][::-1])
+            color = tuple(
+                int(c)
+                for c in cv2.applyColorMap(
+                    np.array([[int(hn * 255)]], dtype=np.uint8), cv_cmap
+                )[0, 0][::-1]
+            )
             cv2.circle(combined, (cx, cy), 6, color, thickness=-1, lineType=cv2.LINE_AA)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -213,7 +237,9 @@ def _make_colormap(name: str) -> matplotlib.colors.Colormap:
     return presets.get(name, plt.cm.magma)
 
 
-def _rasterize_points(points: np.ndarray, res: int = 140) -> Tuple[np.ndarray, float, float]:
+def _rasterize_points(
+    points: np.ndarray, res: int = 140
+) -> Tuple[np.ndarray, float, float]:
     px_w = int(COURT_W * res)
     px_l = int(COURT_L * res)
     grid = np.zeros((px_l, px_w), dtype=np.float32)
@@ -235,7 +261,7 @@ def _blur(grid: np.ndarray, sigma: float) -> np.ndarray:
 
     radius = max(1, int(sigma * 3))
     x = np.arange(-radius, radius + 1)
-    g = np.exp(-(x ** 2) / (2 * sigma * sigma))
+    g = np.exp(-(x**2) / (2 * sigma * sigma))
     g /= g.sum()
     tmp = np.apply_along_axis(lambda m: np.convolve(m, g, mode="same"), 1, grid)
     out = np.apply_along_axis(lambda m: np.convolve(m, g, mode="same"), 0, tmp)
@@ -250,7 +276,11 @@ def _normalize(array: np.ndarray) -> np.ndarray:
 
 
 def _draw_trail(
-    ax, points3d: np.ndarray, cmap: matplotlib.colors.Colormap, lw_px: float, glow: bool = True
+    ax,
+    points3d: np.ndarray,
+    cmap: matplotlib.colors.Colormap,
+    lw_px: float,
+    glow: bool = True,
 ) -> None:
     hs = points3d[:, 2]
     if np.nanmax(hs) - np.nanmin(hs) < 1e-9:

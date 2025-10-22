@@ -15,7 +15,9 @@ class VideoResolver:
             raise ValueError("Video dictionary missing path-like keys")
         return Path(source).expanduser().resolve()
 
-    def sample_frames(self, source: str | Dict[str, Any], step: int = 30) -> Iterable[int]:
+    def sample_frames(
+        self, source: str | Dict[str, Any], step: int = 30
+    ) -> Iterable[int]:
         path = self.resolve(source)
         size = path.stat().st_size if path.exists() else 100
         total_frames = max(1, size // 1024)

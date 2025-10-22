@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict
-from typing import Iterable, List, Dict, Optional, Tuple
+from typing import Iterable, List, Dict, Tuple
 import logging
 
 logger = logging.getLogger(__name__)
@@ -174,17 +174,15 @@ class StatsAccumulator:
 
         kill_percentage = (kills / attacks * 100) if attacks > 0 else 0.0
         attack_efficiency = (
-            (kills - attack_errors - attack_blocked) / attacks
-        ) if attacks > 0 else 0.0
+            ((kills - attack_errors - attack_blocked) / attacks) if attacks > 0 else 0.0
+        )
 
         # Serve metrics
         serve_aces = stats.get(EventType.SERVE_ACE, 0)
         serves = stats.get(EventType.SERVE, 0) + serve_aces
         serve_errors = stats.get(EventType.SERVE_ERROR, 0)
 
-        serve_efficiency = (
-            (serve_aces - serve_errors) / serves
-        ) if serves > 0 else 0.0
+        serve_efficiency = ((serve_aces - serve_errors) / serves) if serves > 0 else 0.0
 
         # Defensive metrics
         digs = stats.get(EventType.DIG, 0)
@@ -195,23 +193,23 @@ class StatsAccumulator:
 
         # Block metrics
         blocks = (
-            stats.get(EventType.BLOCK, 0) +
-            stats.get(EventType.BLOCK_SOLO, 0) +
-            stats.get(EventType.BLOCK_ASSIST, 0)
+            stats.get(EventType.BLOCK, 0)
+            + stats.get(EventType.BLOCK_SOLO, 0)
+            + stats.get(EventType.BLOCK_ASSIST, 0)
         )
         block_errors = stats.get(EventType.BLOCK_ERROR, 0)
 
         # Overall rating (simplified)
         rating = (
-            kills * 3.0 +
-            serve_aces * 2.0 +
-            digs * 1.5 +
-            blocks * 2.5 +
-            stats.get(EventType.ASSIST, 0) * 2.0 -
-            attack_errors * 2.0 -
-            serve_errors * 1.5 -
-            dig_errors * 1.0 -
-            block_errors * 1.0
+            kills * 3.0
+            + serve_aces * 2.0
+            + digs * 1.5
+            + blocks * 2.5
+            + stats.get(EventType.ASSIST, 0) * 2.0
+            - attack_errors * 2.0
+            - serve_errors * 1.5
+            - dig_errors * 1.0
+            - block_errors * 1.0
         )
 
         return {

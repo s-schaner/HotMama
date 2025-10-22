@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Protocol
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class AppContext(BaseModel):
@@ -13,8 +13,8 @@ class AppContext(BaseModel):
 
 
 class HookResult(BaseModel):
-    events: List[Dict[str, Any]] = []
-    artifacts: List[str] = []
+    events: List[Dict[str, Any]] = Field(default_factory=list)
+    artifacts: List[str] = Field(default_factory=list)
 
 
 class Plugin(Protocol):
@@ -28,9 +28,13 @@ class Plugin(Protocol):
 
     def on_session_close(self, session_id: str) -> None: ...
 
-    def on_clip_ingested(self, session_id: str, clip_id: str, clip_path: str) -> HookResult: ...
+    def on_clip_ingested(
+        self, session_id: str, clip_id: str, clip_path: str
+    ) -> HookResult: ...
 
-    def on_events_parsed(self, session_id: str, clip_id: str, events: List[Dict[str, Any]]) -> HookResult: ...
+    def on_events_parsed(
+        self, session_id: str, clip_id: str, events: List[Dict[str, Any]]
+    ) -> HookResult: ...
 
     def get_ui_blocks(self): ...
 

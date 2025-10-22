@@ -40,7 +40,14 @@ if os.environ.get("GRADIO_STUB_ONLY") != "1":
 if _real_gradio is not None:
     sys.modules[__name__] = _real_gradio
     for _name, _value in _real_gradio.__dict__.items():
-        if _name in {"__name__", "__loader__", "__spec__", "__package__", "__path__", "__file__"}:
+        if _name in {
+            "__name__",
+            "__loader__",
+            "__spec__",
+            "__package__",
+            "__path__",
+            "__file__",
+        }:
             globals()[_name] = _value
             continue
         globals()[_name] = _value
@@ -58,7 +65,12 @@ else:
             self.args = args
             self.kwargs = kwargs
 
-        def click(self, fn: Callable, inputs: List[Any] | None = None, outputs: Any | None = None) -> None:
+        def click(
+            self,
+            fn: Callable,
+            inputs: List[Any] | None = None,
+            outputs: Any | None = None,
+        ) -> None:
             self._callback = fn
             self._inputs = inputs
             self._outputs = outputs

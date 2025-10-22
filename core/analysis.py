@@ -30,7 +30,9 @@ def b64_image_data_uri(frame, q=85) -> str:
     return "data:image/jpeg;base64," + base64.b64encode(enc.tobytes()).decode()
 
 
-def extract_frames(path: str, fps: float, max_frames: int) -> Tuple[List[np.ndarray], Dict[str, Any]]:
+def extract_frames(
+    path: str, fps: float, max_frames: int
+) -> Tuple[List[np.ndarray], Dict[str, Any]]:
     """Extract evenly spaced frames from a video file."""
     cap = cv2.VideoCapture(path)
     if not cap.isOpened():
@@ -56,7 +58,11 @@ def extract_frames(path: str, fps: float, max_frames: int) -> Tuple[List[np.ndar
         frames.append(frame)
     cap.release()
 
-    return frames, {"src_fps": float(src_fps), "frames": len(frames), "duration": float(dur)}
+    return frames, {
+        "src_fps": float(src_fps),
+        "frames": len(frames),
+        "duration": float(dur),
+    }
 
 
 def call_endpoint_openai_chat(
@@ -109,7 +115,9 @@ def draw_court(ax: plt.Axes) -> None:
     ax.grid(False)
 
 
-def render_heatmap(points3d: List[Tuple[float, float, float]], out_path: str | None) -> str:
+def render_heatmap(
+    points3d: List[Tuple[float, float, float]], out_path: str | None
+) -> str:
     """Render a heatmap for 3D points and return the saved path."""
     if not points3d:
         raise ValueError("No points")

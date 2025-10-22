@@ -1,8 +1,7 @@
 """Input validation utilities."""
+
 import secrets
-import tempfile
 from pathlib import Path
-from typing import BinaryIO
 
 from fastapi import UploadFile
 
@@ -78,7 +77,9 @@ def create_secure_temp_file(
     return temp_path
 
 
-def validate_coordinate(x: float, y: float, x_max: float = 9.0, y_max: float = 18.0) -> bool:
+def validate_coordinate(
+    x: float, y: float, x_max: float = 9.0, y_max: float = 18.0
+) -> bool:
     """
     Validate court coordinate is within bounds.
 
@@ -115,7 +116,7 @@ def sanitize_filename(filename: str, max_length: int = 255) -> str:
 
     # Limit length
     if len(filename) > max_length:
-        stem = Path(filename).stem[:max_length - 10]
+        stem = Path(filename).stem[: max_length - 10]
         suffix = Path(filename).suffix
         filename = f"{stem}{suffix}"
 

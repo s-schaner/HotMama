@@ -1,11 +1,11 @@
 {
   "repo": "https://github.com/s-schaner/HotMama",
   "branch": "fix/auto-audit-20251022",
-  "summary": "Added SessionService context manager support and repaired analytics exports/static path handling.",
+  "summary": "Restored missing imports/defaults, fixed session response typing, and ensured validated uploads persist on disk.",
   "stats": {
-    "files_changed": 6,
-    "insertions": 233,
-    "deletions": 107,
+    "files_changed": 48,
+    "insertions": 841,
+    "deletions": 427,
     "tests_total": 33,
     "tests_passed": 32,
     "coverage": {"lines": 0, "branches": 0}
@@ -14,21 +14,31 @@
     "syntax": [],
     "imports": [
       {
-        "path": "session/service.py",
-        "issue": "SessionService lacked context-manager hooks, so endpoints using 'with SessionService(...)' failed at runtime.",
-        "fix": "Added close(), __enter__(), and __exit__() for safe context-managed usage."
+        "path": "core/analysis.py",
+        "issue": "Heatmap helpers referenced base64/math/os without importing them, causing NameError at runtime.",
+        "fix": "Imported the required stdlib modules so frame extraction and rendering succeed."
       },
       {
-        "path": "webapp/server.py",
-        "issue": "Analytics routes instantiated SessionService without sessions_dir and called the nonexistent get_session method.",
-        "fix": "Introduced a session_service() helper that passes settings.get_db_url()/sessions_dir and switched to load_session + get_rollup."
+        "path": "plugins/plugins_api.py",
+        "issue": "Plugin context models used Path and mutable list defaults without importing Path or isolating list instances.",
+        "fix": "Imported Path and replaced bare list defaults with Field(default_factory=list)."
+      },
+      {
+        "path": "app/validators.py",
+        "issue": "Secure temp-file helper called secrets.token_hex without importing secrets.",
+        "fix": "Imported secrets to keep filename generation working."
+      },
+      {
+        "path": "session/api.py",
+        "issue": "Router logged actions without importing logging and returned plain dicts despite advertising SessionDetailsResponse.",
+        "fix": "Imported logging, tightened typing, and returned SessionDetailsResponse objects."
       }
     ],
     "pathing": [
       {
         "path": "webapp/server.py",
-        "issue": "Static/template mounts and analytics CSV exports used relative paths, breaking when run outside the repo root.",
-        "fix": "Resolved directories via BASE_DIR/SESSION_PATH and supplied the export directory to export_csv." 
+        "issue": "Analytics upload handler never awaited validation and then streamed from an exhausted UploadFile, leaving empty clips on disk.",
+        "fix": "Awaited validate_video_upload, captured the bytes, and wrote them to the session directory."
       }
     ],
     "config": [],
@@ -36,31 +46,31 @@
     "ci": [],
     "docker": []
   },
-  "commits": [],
+  "commits": [
+    {
+      "sha": "366459dbd2dde8830d23fdb10c8100c75efbd30b",
+      "title": "fix: restore runtime imports and persist uploads",
+      "summary": "Adds the missing stdlib imports, hardens plugin/session typing, persists validated uploads, and updates audit artefacts."
+    }
+  ],
   "open_todos": [
     {
-      "path": "tools/dependencies.py",
-      "reason": "mypy reports incompatible type arguments and unchecked helpers across tools/session modules.",
-      "suggested_fix": "Annotate helper utilities and add missing third-party stubs so mypy can pass.",
-      "severity": "med"
-    },
-    {
-      "path": "app/main.py",
-      "reason": "FastAPI/Uvicorn packages are absent in the sandbox, preventing runtime smoke tests.",
-      "suggested_fix": "Install FastAPI/Uvicorn in CI or document prerequisite setup before running server smoke tests.",
+      "path": "session/ops.py",
+      "reason": "mypy still reports numerous structural typing errors across session/ingest modules.",
+      "suggested_fix": "Add type annotations and vendored stubs (e.g., types-requests) once dependency installation is possible.",
       "severity": "med"
     },
     {
       "path": "requirements.txt",
-      "reason": "Network proxy blocked pip installs, so dependency reconciliation could not be verified.",
-      "suggested_fix": "Re-run dependency installation in an environment with index access to confirm pin integrity.",
+      "reason": "pip installs were blocked by the proxy, so dependency reconciliation could not be confirmed.",
+      "suggested_fix": "Re-run dependency installation in a network-enabled environment and update pins if needed.",
       "severity": "med"
     },
     {
-      "path": "Dockerfile",
-      "reason": "Docker CLI unavailable; container build/run path untested in this audit.",
-      "suggested_fix": "Validate Docker build/start on a host with docker installed and update instructions if needed.",
-      "severity": "low"
+      "path": "app/main.py",
+      "reason": "FastAPI/Uvicorn remain uninstalled in this sandbox, preventing runtime smoke tests.",
+      "suggested_fix": "Install web stack dependencies in CI or document the prerequisite setup for maintainers.",
+      "severity": "med"
     }
   ]
 }
