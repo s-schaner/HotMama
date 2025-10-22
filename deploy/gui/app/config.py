@@ -26,12 +26,17 @@ class Settings(BaseSettings):
     port: int = Field(default=7860, alias="GUI_PORT")
     service_name: str = Field(default="hotmama-gui", alias="SERVICE_NAME")
     log_json: bool = Field(default=False, alias="LOG_JSON")
+
+    # LM Studio configuration (local inference)
     lmstudio_base_url: str | None = Field(
-        default=None, alias="GUI_LMSTUDIO_BASE_URL"
+        default="http://127.0.0.1:1234", alias="GUI_LMSTUDIO_BASE_URL"
     )
     lmstudio_api_key: str = Field(default="lm-studio", alias="GUI_LMSTUDIO_API_KEY")
     lm_parser_model: str | None = Field(
         default="qwen2.5-3b-instruct", alias="GUI_LM_PARSER_MODEL"
+    )
+    lm_vision_model: str | None = Field(
+        default="qwen/qwen2.5-vl-7b", alias="GUI_LM_VISION_MODEL"
     )
     lm_enrichment_model: str | None = Field(
         default="qwen2.5-vl-7b", alias="GUI_LM_ENRICHMENT_MODEL"
@@ -41,6 +46,20 @@ class Settings(BaseSettings):
     )
     lm_temperature: float = Field(default=0.0, alias="GUI_LM_TEMPERATURE")
     lm_max_tokens: int = Field(default=512, alias="GUI_LM_MAX_TOKENS")
+
+    # Hugging Face configuration (cloud inference)
+    huggingface_api_url: str | None = Field(
+        default=None, alias="GUI_HUGGINGFACE_API_URL"
+    )
+    huggingface_api_key: str | None = Field(
+        default=None, alias="GUI_HUGGINGFACE_API_KEY"
+    )
+    huggingface_model: str | None = Field(
+        default=None, alias="GUI_HUGGINGFACE_MODEL"
+    )
+
+    # LLM provider selection: "lmstudio" or "huggingface"
+    llm_provider: str = Field(default="lmstudio", alias="GUI_LLM_PROVIDER")
 
     model_config = {
         "env_file": ".env",

@@ -17,6 +17,13 @@ import httpx
 from deploy.api.app.parsing import DEFAULT_SYSTEM_PROMPT
 from deploy.api.app.schemas import JobSpec
 
+try:
+    import cv2
+    import numpy as np
+    HAS_CV2 = True
+except ImportError:
+    HAS_CV2 = False
+
 LOGGER = logging.getLogger("hotmama.gui.client")
 
 _VALID_TASKS = {
@@ -415,4 +422,211 @@ class ApiClient:
         return body
 
 
-__all__ = ["ApiClient", "JobHandle", "JobState", "LMStudioClient"]
+class VideoLLMClient:
+    """Client for streaming video LLM queries with vision support."""
+
+    def __init__(
+        self,
+        provider: str = "lmstudio",
+        base_url: str | None = None,
+        api_key: str | None = None,
+        model: str | None = None,
+        *,
+        temperature: float = 0.0,
+        max_tokens: int = 1024,
+        timeout: float = 60.0,
+        client: httpx.Client | None = None,
+    ) -> None:
+        self._provider = provider.lower()
+        self._base_url = base_url
+        self._api_key = api_key or "default"
+        self._model = model
+        self._temperature = temperature
+        self._max_tokens = max_tokens
+        self._timeout = timeout
+
+        if not base_url:
+            raise ValueError(f"{provider} base URL is required")
+
+        headers = {
+            "Authorization": f"Bearer {self._api_key}",
+            "Content-Type": "application/json",
+        }
+        self._client = client or httpx.Client(
+            base_url=base_url.rstrip("/"), headers=headers, timeout=timeout
+        )
+
+    def query_video_stream(
+        self, video_path: str, query: str, *, frame_indices: list[int] | None = None
+    ):
+        """Stream LLM response for video query.
+
+        Args:
+            video_path: Path to video file
+            query: User question about the video
+            frame_indices: Optional list of frame indices to analyze (defaults to sampling)
+
+        Yields:
+            Text chunks from the LLM response
+        """
+        if not HAS_CV2:
+            yield "❌ OpenCV (cv2) is required for video processing but not installed."
+            return
+
+        # Extract frames from video
+        frames_data = self._extract_frames(video_path, frame_indices)
+        if not frames_data:
+            yield "❌ Failed to extract frames from video."
+            return
+
+        # Query LLM with streaming
+        try:
+            if self._provider == "lmstudio":
+                yield from self._query_lmstudio_stream(query, frames_data)
+            elif self._provider == "huggingface":
+                yield from self._query_huggingface_stream(query, frames_data)
+            else:
+                yield f"❌ Unsupported provider: {self._provider}"
+        except Exception as exc:
+            LOGGER.error("Video LLM query failed", exc_info=exc)
+            yield f"\n\n❌ Query failed: {exc}"
+
+    def _extract_frames(
+        self, video_path: str, frame_indices: list[int] | None = None
+    ) -> list[str]:
+        """Extract frames from video and encode as base64.
+
+        Args:
+            video_path: Path to video file
+            frame_indices: Optional specific frame indices (defaults to uniform sampling)
+
+        Returns:
+            List of base64-encoded JPEG frames
+        """
+        import base64
+
+        try:
+            capture = cv2.VideoCapture(video_path)
+            total_frames = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
+
+            if frame_indices is None:
+                # Sample 5 frames uniformly across the video
+                frame_indices = [
+                    int(i * total_frames / 5) for i in range(5) if i * total_frames / 5 < total_frames
+                ]
+
+            frames_b64 = []
+            for frame_idx in frame_indices:
+                capture.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+                success, frame = capture.read()
+
+                if success:
+                    # Resize frame for efficiency
+                    frame_resized = cv2.resize(frame, (512, 384))
+                    # Encode as JPEG
+                    _, buffer = cv2.imencode(".jpg", frame_resized)
+                    frame_b64 = base64.b64encode(buffer).decode("utf-8")
+                    frames_b64.append(frame_b64)
+
+            capture.release()
+            return frames_b64
+
+        except Exception as exc:
+            LOGGER.error("Frame extraction failed", exc_info=exc)
+            return []
+
+    def _query_lmstudio_stream(self, query: str, frames_b64: list[str]):
+        """Query LM Studio with vision model using streaming."""
+        # Build messages with images
+        content = [{"type": "text", "text": query}]
+        for frame_b64 in frames_b64[:3]:  # Limit to 3 frames to avoid token limits
+            content.append({
+                "type": "image_url",
+                "image_url": {"url": f"data:image/jpeg;base64,{frame_b64}"},
+            })
+
+        payload = {
+            "model": self._model or "qwen/qwen2.5-vl-7b",
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "You are a helpful video analysis assistant. Analyze the provided video frames and answer the user's question accurately.",
+                },
+                {"role": "user", "content": content},
+            ],
+            "temperature": self._temperature,
+            "max_tokens": self._max_tokens,
+            "stream": True,
+        }
+
+        try:
+            with self._client.stream(
+                "POST", "/v1/chat/completions", json=payload
+            ) as response:
+                response.raise_for_status()
+
+                for line in response.iter_lines():
+                    if not line or line == "data: [DONE]":
+                        continue
+
+                    if line.startswith("data: "):
+                        try:
+                            data = json.loads(line[6:])
+                            delta = data.get("choices", [{}])[0].get("delta", {})
+                            content_chunk = delta.get("content", "")
+                            if content_chunk:
+                                yield content_chunk
+                        except json.JSONDecodeError:
+                            continue
+
+        except httpx.HTTPError as exc:
+            raise RuntimeError(f"LM Studio request failed: {exc}") from exc
+
+    def _query_huggingface_stream(self, query: str, frames_b64: list[str]):
+        """Query Hugging Face Inference API with vision model."""
+        # Note: Hugging Face API may vary by model; this is a generic implementation
+        payload = {
+            "inputs": {
+                "question": query,
+                "images": frames_b64[:3],  # Limit to 3 frames
+            },
+            "parameters": {
+                "temperature": self._temperature,
+                "max_new_tokens": self._max_tokens,
+            },
+            "stream": True,
+        }
+
+        try:
+            with self._client.stream("POST", "/", json=payload) as response:
+                response.raise_for_status()
+
+                for line in response.iter_lines():
+                    if not line:
+                        continue
+
+                    try:
+                        data = json.loads(line)
+                        # Extract text from response (format may vary by model)
+                        if isinstance(data, dict):
+                            text = data.get("token", {}).get("text", "")
+                            if text:
+                                yield text
+                        elif isinstance(data, list) and data:
+                            text = data[0].get("generated_text", "")
+                            if text:
+                                yield text
+                                return  # HF may return all at once
+
+                    except json.JSONDecodeError:
+                        continue
+
+        except httpx.HTTPError as exc:
+            raise RuntimeError(f"Hugging Face request failed: {exc}") from exc
+
+    def close(self) -> None:
+        """Close the HTTP client."""
+        self._client.close()
+
+
+__all__ = ["ApiClient", "JobHandle", "JobState", "LMStudioClient", "VideoLLMClient"]
