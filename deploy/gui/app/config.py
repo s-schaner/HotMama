@@ -36,10 +36,10 @@ class Settings(BaseSettings):
         default="qwen2.5-3b-instruct", alias="GUI_LM_PARSER_MODEL"
     )
     lm_vision_model: str | None = Field(
-        default="qwen/qwen2.5-vl-7b", alias="GUI_LM_VISION_MODEL"
+        default="qwen3-vl-8b", alias="GUI_LM_VISION_MODEL"
     )
     lm_enrichment_model: str | None = Field(
-        default="qwen2.5-vl-7b", alias="GUI_LM_ENRICHMENT_MODEL"
+        default="qwen3-vl-8b", alias="GUI_LM_ENRICHMENT_MODEL"
     )
     lm_system_prompt: str | None = Field(
         default=None, alias="GUI_LM_SYSTEM_PROMPT"
