@@ -46,7 +46,7 @@ def test_lmstudio_client_generate_manifest_with_enrichment() -> None:
             "http://lmstudio",
             api_key="demo",
             instruct_model="qwen2.5-3b-instruct",
-            enrichment_model="qwen2.5-vl-7b",
+            enrichment_model="qwen3-vl-8b",
             client=http_client,
         )
         spec = client.generate_manifest(
@@ -56,7 +56,7 @@ def test_lmstudio_client_generate_manifest_with_enrichment() -> None:
             enrich=True,
         )
 
-    assert calls == ["qwen2.5-3b-instruct", "qwen2.5-vl-7b"]
+    assert calls == ["qwen2.5-3b-instruct", "qwen3-vl-8b"]
     assert spec.model_dump(mode="json") == enriched
 
 

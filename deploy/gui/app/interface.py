@@ -486,7 +486,7 @@ def create_interface(controller: GuiController):
                             lines=6,
                         )
                         enrich_checkbox = gr.Checkbox(
-                            label="Enrich manifest with qwen2.5-vl-7b",
+                            label="Enrich manifest with qwen3-vl-8b",
                             value=False,
                             visible=False,
                         )

@@ -235,8 +235,8 @@ class VideoLLMInteractionModule(GuiModule):
 
                         model_name_input = gr.Textbox(
                             label="Model Name",
-                            value="qwen/qwen2.5-vl-7b",
-                            placeholder="qwen/qwen2.5-vl-7b or model path",
+                            value="qwen3-vl-8b",
+                            placeholder="qwen3-vl-8b or model path",
                             info="Name or path of the vision-language model",
                         )
 

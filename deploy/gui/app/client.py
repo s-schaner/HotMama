@@ -564,7 +564,7 @@ class VideoLLMClient:
             })
 
         payload = {
-            "model": self._model or "qwen/qwen2.5-vl-7b",
+            "model": self._model or "qwen3-vl-8b",
             "messages": [
                 {
                     "role": "system",

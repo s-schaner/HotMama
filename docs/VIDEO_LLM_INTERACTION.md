@@ -82,13 +82,13 @@ Default configuration for local LLM inference at `127.0.0.1:1234`:
 # .env or environment variables
 GUI_LMSTUDIO_BASE_URL=http://127.0.0.1:1234
 GUI_LMSTUDIO_API_KEY=lm-studio
-GUI_LM_VISION_MODEL=qwen/qwen2.5-vl-7b
+GUI_LM_VISION_MODEL=qwen3-vl-8b
 GUI_LM_PARSER_MODEL=qwen2.5-3b-instruct
 GUI_LLM_PROVIDER=lmstudio
 ```
 
 **Recommended Models:**
-- **Vision Model**: `qwen/qwen2.5-vl-7b` - Multimodal vision-language model
+- **Vision Model**: `qwen3-vl-8b` - Multimodal vision-language model (Qwen3-VL-8B)
 - **Parser Model**: `qwen2.5-3b-instruct` - Text-only instruction model
 
 ### Hugging Face (Cloud Inference)
@@ -355,7 +355,7 @@ GUI_LMSTUDIO_BASE_URL=http://127.0.0.1:1234
 **Solution:**
 1. Reduce number of frames analyzed (default is 5)
 2. Lower frame resolution in `_extract_frames()`
-3. Use a faster vision model (e.g., `qwen2.5-3b-instruct` instead of `qwen2.5-vl-7b`)
+3. Use a faster vision model (e.g., smaller Qwen models or reduce max tokens)
 4. Increase `GUI_REQUEST_TIMEOUT` for longer videos
 
 ### Issue: "Hugging Face request failed"
@@ -385,7 +385,7 @@ GUI_LMSTUDIO_BASE_URL=http://127.0.0.1:1234
 | Model | Speed | Accuracy | Use Case |
 |-------|-------|----------|----------|
 | `qwen2.5-3b-instruct` | Fast | Good | Text-only, simple queries |
-| `qwen/qwen2.5-vl-7b` | Medium | Excellent | Vision + text, detailed analysis |
+| `qwen3-vl-8b` | Medium | Excellent | Vision + text, detailed analysis |
 | `qwen2.5-72b-instruct` | Slow | Best | Complex reasoning (if available) |
 
 ### Caching
