@@ -74,6 +74,22 @@ export const confirmProposal = (sessionId: string, id: string, actor: string) =>
 export const dismissProposal = (sessionId: string, id: string, actor: string) =>
   proposalVerdict(sessionId, id, "dismiss", actor);
 
+export async function requestSummary(
+  sessionId: string,
+  actor: string,
+): Promise<{ summary: string; model: string }> {
+  const res = await fetch(`/api/sessions/${sessionId}/summary`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ actor }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(String(body.detail ?? `summary failed: ${res.status}`));
+  }
+  return res.json();
+}
+
 export interface CreateSessionBody {
   label?: string;
   kind: string;

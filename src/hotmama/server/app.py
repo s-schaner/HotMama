@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 
 from hotmama import __version__
 from hotmama.capture import CaptureService, ClipOptions
+from hotmama.inference import ChatClient, make_chat_client
 
 from .api import build_router
 from .config import Settings
@@ -20,10 +21,23 @@ from .store import EventStore
 from .ws import Hub
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+    *,
+    chat_client: ChatClient | None = None,
+) -> FastAPI:
     settings = settings or Settings()
     store = EventStore(settings.db_path)
     hub = Hub()
+    if chat_client is None:
+        chat_client = make_chat_client(
+            provider=settings.llm_provider,
+            base_url=settings.llm_base_url,
+            api_key=settings.llm_api_key,
+            model=settings.llm_model,
+            max_tokens=settings.llm_max_tokens,
+            temperature=settings.llm_temperature,
+        )
     capture = CaptureService(
         store,
         settings.media_root,
@@ -61,7 +75,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    app.include_router(build_router(store, manager, hub, capture, settings))
+    app.include_router(
+        build_router(store, manager, hub, capture, settings, chat_client=chat_client)
+    )
 
     settings.media_root.mkdir(parents=True, exist_ok=True)
     app.mount("/media", StaticFiles(directory=settings.media_root), name="media")

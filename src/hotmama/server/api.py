@@ -40,6 +40,7 @@ from hotmama.core.events import (
     SessionKind,
 )
 from hotmama.core.ids import new_session_id, utcnow
+from hotmama.inference import ChatClient, LLMError, generate_set_summary
 from hotmama.reports import (
     ReportUnavailableError,
     render_report_html,
@@ -121,6 +122,8 @@ def build_router(
     hub: Hub,
     capture: CaptureService,
     settings: Settings,
+    *,
+    chat_client: ChatClient | None = None,
 ) -> APIRouter:
     router = APIRouter()
 
@@ -360,6 +363,33 @@ def build_router(
         return await _append(
             manager, session_id, retraction, request.actor if request else None
         )
+
+    @router.post("/api/sessions/{session_id}/summary")
+    async def set_summary(
+        session_id: str, request: UndoRequest | None = None
+    ) -> dict[str, Any]:
+        _require_session(session_id)
+        if chat_client is None:
+            raise HTTPException(
+                status_code=503,
+                detail="LLM not configured — set HOTMAMA_LLM_PROVIDER/_MODEL on the host",
+            )
+        payload = await manager.state_payload(session_id)
+        try:
+            text = await asyncio.to_thread(
+                generate_set_summary, chat_client, payload["state"], payload["summary"]
+            )
+        except LLMError as err:
+            raise HTTPException(status_code=502, detail=str(err)) from err
+        note = {
+            "type": "note_added",
+            "text": f"[set summary]\n{text}",
+        }
+        actor = request.actor if request else None
+        await manager.append(
+            session_id, note, actor=actor or f"llm:{chat_client.model}"
+        )
+        return {"summary": text, "model": chat_client.model}
 
     async def _report_html(session_id: str) -> str:
         _require_session(session_id)

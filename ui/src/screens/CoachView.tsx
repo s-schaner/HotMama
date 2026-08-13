@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import { requestSummary } from "../api";
 import { CapturePanel, ClipsPanel } from "../components/CapturePanel";
 import { ProposalsPanel } from "../components/ProposalsPanel";
 import { RotationStrip, rotationOf } from "../components/RotationStrip";
@@ -45,10 +46,24 @@ export function CoachView({
   clips: ClipDto[];
 }) {
   const [tagPlayer, setTagPlayer] = useState<string | null>(null);
+  const [aiSummary, setAiSummary] = useState<string | null>(null);
+  const [summaryBusy, setSummaryBusy] = useState(false);
   const state = payload.state;
   const summary = payload.summary;
   const set = state.current_set;
   const leak = summary.biggest_leak;
+
+  const fetchSummary = async () => {
+    setSummaryBusy(true);
+    try {
+      const result = await requestSummary(sessionId, actor);
+      setAiSummary(result.summary);
+    } catch (err) {
+      notify(`⚠ ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setSummaryBusy(false);
+    }
+  };
 
   const tag = (code: TagCode) => {
     append({
@@ -211,12 +226,22 @@ export function CoachView({
         >
           ⬇ PDF
         </button>
+        <button className="small ghost" disabled={summaryBusy} onClick={fetchSummary}>
+          {summaryBusy ? "🧠 Thinking…" : "🧠 Set summary"}
+        </button>
         {state.cv_observations > 0 && (
           <span className="subtle">
             🤖 {state.cv_observations} observations from remote workers
           </span>
         )}
       </div>
+
+      {aiSummary && (
+        <div className="panel">
+          <h3>Between-set read</h3>
+          <p style={{ whiteSpace: "pre-wrap", margin: 0 }}>{aiSummary}</p>
+        </div>
+      )}
 
       {state.warnings.length > 0 && (
         <div className="panel">

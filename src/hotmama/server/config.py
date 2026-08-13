@@ -38,6 +38,15 @@ class Settings(BaseSettings):
     """Auto-commit CV proposals at/above this confidence. None (default) =
     never auto-commit — every proposal waits for a human. Manual-first."""
 
+    llm_provider: str | None = None
+    """'openai' (any OpenAI-compatible server: KTransformers, LM Studio, vLLM,
+    xAI, OpenAI, Gemini-compat) or 'anthropic'. Unset = summaries disabled."""
+    llm_base_url: str | None = None
+    llm_api_key: str | None = None
+    llm_model: str | None = None
+    llm_max_tokens: int = 500
+    llm_temperature: float = 0.4
+
     def resolve_ui_dist(self) -> Path | None:
         if self.ui_dist is not None:
             return self.ui_dist if self.ui_dist.is_dir() else None
