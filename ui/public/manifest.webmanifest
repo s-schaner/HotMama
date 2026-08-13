@@ -1,0 +1,18 @@
+{
+  "name": "HotMama Volleyball",
+  "short_name": "HotMama",
+  "description": "Live volleyball statting and analytics",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#101418",
+  "theme_color": "#101418",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
