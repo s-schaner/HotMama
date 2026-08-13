@@ -31,7 +31,7 @@ from hotmama.capture import (
     CaptureUnavailableError,
     SourceOpenError,
 )
-from hotmama.core import RosterPlayer, dump_event
+from hotmama.core import RosterPlayer, dump_event, parse_event
 from hotmama.core.events import (
     CvObservation,
     Producer,
@@ -39,7 +39,7 @@ from hotmama.core.events import (
     SessionCreated,
     SessionKind,
 )
-from hotmama.core.ids import new_session_id, utcnow
+from hotmama.core.ids import new_event_id, new_session_id, utcnow
 from hotmama.inference import ChatClient, LLMError, generate_set_summary
 from hotmama.reports import (
     ReportUnavailableError,
@@ -86,6 +86,16 @@ class StartCaptureRequest(BaseModel):
     source: str
     rally_clips: bool = True
     tag_clips: bool = True
+
+
+EXPORT_FORMAT = "hotmama.session.v1"
+
+
+class ImportSessionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    bundle: dict[str, Any]
+    actor: str | None = None
 
 
 class WorkerLeaseRequest(BaseModel):
@@ -220,6 +230,53 @@ def build_router(
     async def list_clips(session_id: str) -> list[dict[str, Any]]:
         _require_session(session_id)
         return store.list_clips(session_id)
+
+    # -- export / import ----------------------------------------------------------
+
+    @router.get("/api/sessions/{session_id}/export")
+    async def export_session(session_id: str) -> dict[str, Any]:
+        row = store.get_session(session_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="unknown session")
+        return {
+            "format": EXPORT_FORMAT,
+            "exported_at": utcnow().isoformat(),
+            "session": row,
+            "events": store.load_events(session_id),
+        }
+
+    @router.post("/api/sessions/import", status_code=201)
+    async def import_session(request: ImportSessionRequest) -> dict[str, Any]:
+        bundle = request.bundle
+        if bundle.get("format") != EXPORT_FORMAT:
+            raise HTTPException(
+                status_code=422, detail=f"bundle format must be {EXPORT_FORMAT!r}"
+            )
+        raw_events = bundle.get("events")
+        if not isinstance(raw_events, list) or not raw_events:
+            raise HTTPException(status_code=422, detail="bundle has no events")
+
+        reminted = _remint_events(raw_events)
+        for index, event in enumerate(reminted):
+            try:
+                parse_event(event)
+            except ValidationError as err:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"event {index} invalid: {err.errors()[:2]}",
+                ) from err
+
+        meta = bundle.get("session") or {}
+        session_id = new_session_id()
+        store.create_session(
+            session_id,
+            kind=str(meta.get("kind", "match")),
+            label=str(meta.get("label", "imported session")),
+        )
+        for event in reminted:
+            store.append_event(session_id, event)
+        payload = await manager.state_payload(session_id)
+        return {"session_id": session_id, **payload}
 
     # -- remote pull-worker feed (D15) ------------------------------------------
 
@@ -477,6 +534,32 @@ async def _handle_ws_message(
             await websocket.send_json({"type": "error", "detail": "nothing to undo"})
         return
     await websocket.send_json({"type": "error", "detail": f"unknown message type {kind!r}"})
+
+
+def _remint_events(raw_events: list[Any]) -> list[dict[str, Any]]:
+    """Fresh event ids for an imported bundle, with references remapped.
+
+    Event ids are globally unique in the store, so re-importing a bundle
+    (or importing into the DB it came from) must not collide — and
+    retraction/provenance links must keep pointing at the right events.
+    """
+    id_map: dict[str, str] = {}
+    for raw in raw_events:
+        if isinstance(raw, dict) and isinstance(raw.get("event_id"), str):
+            id_map[raw["event_id"]] = new_event_id()
+    reminted: list[dict[str, Any]] = []
+    for raw in raw_events:
+        event = dict(raw) if isinstance(raw, dict) else {}
+        event.pop("seq", None)
+        old_id = event.get("event_id")
+        if isinstance(old_id, str) and old_id in id_map:
+            event["event_id"] = id_map[old_id]
+        for key in ("target_event_id", "source_event_id"):
+            value = event.get(key)
+            if isinstance(value, str) and value in id_map:
+                event[key] = id_map[value]
+        reminted.append(event)
+    return reminted
 
 
 def _proposal_to_event(
