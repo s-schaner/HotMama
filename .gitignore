@@ -1,6 +1,43 @@
+# Python
 __pycache__/
-*.pyc
-sessions/
-!sessions/.gitkeep
-*.db
+*.py[cod]
+*.egg-info/
 .venv/
+venv/
+build/
+dist/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Node / UI
+node_modules/
+ui/dist/
+*.tsbuildinfo
+
+# App data
+data/
+*.db
+*.db-wal
+*.db-shm
+sessions/
+
+# Media — never commit footage or model weights
+*.mp4
+*.mkv
+*.avi
+*.mov
+*.pt
+*.onnx
+*.engine
+weights/
+
+# Environment & editors
+.env
+.env.*
+!.env.example
+.DS_Store
+.idea/
+.vscode/
