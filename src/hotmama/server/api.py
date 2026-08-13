@@ -99,6 +99,8 @@ class WorkerObservation(BaseModel):
     kind: str = Field(min_length=1, max_length=80)
     data: dict[str, Any] = Field(default_factory=dict)
     confidence: float = Field(default=1.0, ge=0.0, le=1.0)
+    proposal: dict[str, Any] | None = None
+    """Optional domain-event dict this observation proposes (confirm-flow)."""
 
 
 class WorkerCompleteRequest(BaseModel):
@@ -262,15 +264,16 @@ def build_router(
         _check_worker_auth(authorization)
         if request.producer not in (Producer.CV_WELL, Producer.CV_CLOUD):
             raise HTTPException(status_code=422, detail="producer must be a CV producer")
+        if not store.analysis_job_exists(request.clip_id):
+            raise HTTPException(status_code=404, detail="unknown analysis job")
         if not request.ok:
-            known = store.complete_analysis(
+            store.complete_analysis(
                 request.clip_id, ok=False, error=request.error or "worker error"
             )
-            if not known:
-                raise HTTPException(status_code=404, detail="unknown analysis job")
             return {"status": "requeued_or_failed", "appended": 0}
 
         appended = 0
+        auto_committed = 0
         for observation in request.observations:
             event = CvObservation(
                 kind=observation.kind,
@@ -278,18 +281,85 @@ def build_router(
                 confidence=observation.confidence,
                 producer=request.producer,
                 actor=request.worker,
+                proposal=observation.proposal,
             )
             await _append(manager, request.session_id, dump_event(event), request.worker)
             appended += 1
-        known = store.complete_analysis(request.clip_id, ok=True)
-        if not known:
-            raise HTTPException(status_code=404, detail="unknown analysis job")
-        return {"status": "done", "appended": appended}
+            threshold = settings.auto_commit_confidence
+            if (
+                observation.proposal is not None
+                and threshold is not None
+                and observation.confidence >= threshold
+            ):
+                proposed = _proposal_to_event(
+                    observation.proposal,
+                    source_event_id=event.event_id,
+                    producer=request.producer.value,
+                    confidence=observation.confidence,
+                    occurred_at=event.occurred_at.isoformat(),
+                    actor=request.worker,
+                )
+                try:
+                    await manager.append(
+                        request.session_id, proposed, actor=request.worker
+                    )
+                    auto_committed += 1
+                except (ValidationError, EngineError):
+                    # Invalid or rule-breaking proposal stays pending for a human.
+                    pass
+        store.complete_analysis(request.clip_id, ok=True)
+        return {"status": "done", "appended": appended, "auto_committed": auto_committed}
 
     @router.get("/api/sessions/{session_id}/analysis")
     async def analysis_overview(session_id: str) -> dict[str, int]:
         _require_session(session_id)
         return store.analysis_overview(session_id)
+
+    # -- confirm-flow: CV proposals need a human verdict ------------------------
+
+    async def _pending_proposal(session_id: str, observation_id: str) -> dict[str, Any]:
+        try:
+            payload = await manager.state_payload(session_id)
+        except UnknownSessionError as err:
+            raise HTTPException(status_code=404, detail="unknown session") from err
+        for proposal in payload["state"]["proposals"]:
+            if proposal["event_id"] == observation_id:
+                return dict(proposal)
+        raise HTTPException(status_code=404, detail="no such pending proposal")
+
+    @router.post("/api/sessions/{session_id}/proposals/{observation_id}/confirm")
+    async def confirm_proposal(
+        session_id: str,
+        observation_id: str,
+        request: UndoRequest | None = None,
+    ) -> dict[str, Any]:
+        proposal = await _pending_proposal(session_id, observation_id)
+        event_dict = _proposal_to_event(
+            proposal["proposal"],
+            source_event_id=observation_id,
+            producer=str(proposal["producer"]),
+            confidence=float(proposal["confidence"]),
+            occurred_at=str(proposal["occurred_at"]),
+            actor=request.actor if request else None,
+        )
+        return await _append(
+            manager, session_id, event_dict, request.actor if request else None
+        )
+
+    @router.post("/api/sessions/{session_id}/proposals/{observation_id}/dismiss")
+    async def dismiss_proposal(
+        session_id: str,
+        observation_id: str,
+        request: UndoRequest | None = None,
+    ) -> dict[str, Any]:
+        await _pending_proposal(session_id, observation_id)
+        retraction = {
+            "type": "event_retracted",
+            "target_event_id": observation_id,
+        }
+        return await _append(
+            manager, session_id, retraction, request.actor if request else None
+        )
 
     async def _report_html(session_id: str) -> str:
         _require_session(session_id)
@@ -377,6 +447,33 @@ async def _handle_ws_message(
             await websocket.send_json({"type": "error", "detail": "nothing to undo"})
         return
     await websocket.send_json({"type": "error", "detail": f"unknown message type {kind!r}"})
+
+
+def _proposal_to_event(
+    proposal: dict[str, Any],
+    *,
+    source_event_id: str,
+    producer: str,
+    confidence: float,
+    occurred_at: str,
+    actor: str | None,
+) -> dict[str, Any]:
+    """Turn a proposal dict into an appendable event, controlling provenance.
+
+    The proposal's own identity fields are stripped so the confirmed event
+    gets a fresh id and an explicit link back to the observation.
+    """
+    event = dict(proposal)
+    event.pop("event_id", None)
+    event.pop("source_event_id", None)
+    event.pop("actor", None)
+    event["source_event_id"] = source_event_id
+    event.setdefault("producer", producer)
+    event.setdefault("confidence", confidence)
+    event.setdefault("occurred_at", occurred_at)
+    if actor is not None:
+        event["actor"] = actor
+    return event
 
 
 async def _append(

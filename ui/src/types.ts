@@ -94,6 +94,16 @@ export interface TagDto {
   occurred_at: string;
 }
 
+export interface ProposalDto {
+  event_id: string;
+  kind: string;
+  proposal: Record<string, unknown>;
+  confidence: number;
+  producer: string;
+  actor: string | null;
+  occurred_at: string;
+}
+
 export interface MatchStateDto {
   created: boolean;
   kind: string;
@@ -113,6 +123,7 @@ export interface MatchStateDto {
   notes: unknown[];
   warnings: string[];
   cv_observations: number;
+  proposals: ProposalDto[];
   applied_events: number;
   last_event_id: string | null;
 }

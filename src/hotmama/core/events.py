@@ -118,6 +118,8 @@ class BaseEvent(BaseModel):
     producer: Producer = Producer.HUMAN
     actor: str | None = None
     confidence: float = Field(default=1.0, ge=0.0, le=1.0)
+    source_event_id: str | None = None
+    """Provenance link — e.g. the cv_observation this event was confirmed from."""
 
 
 class SessionCreated(BaseEvent):
@@ -223,15 +225,20 @@ class EventRetracted(BaseEvent):
 
 
 class CvObservation(BaseEvent):
-    """Reserved for the vision phase: raw observations that may become proposals.
+    """A raw observation from a vision producer, optionally proposing an event.
 
-    The v1 engine records their count and otherwise ignores them, so Well
-    workers can start emitting before the confirm-flow ships.
+    When ``proposal`` is set it is a domain-event dict (e.g. a rally_ended)
+    that the observation suggests. The engine tracks unresolved proposals;
+    a human confirms one into a real event (linked back via
+    ``source_event_id``) or dismisses it by retracting the observation.
+    High-confidence proposals may be auto-committed by the server when the
+    operator opts in — never by default.
     """
 
     type: Literal["cv_observation"] = "cv_observation"
     kind: str
     data: dict[str, Any] = Field(default_factory=dict)
+    proposal: dict[str, Any] | None = None
 
 
 AnyEvent = Annotated[

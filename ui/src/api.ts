@@ -49,6 +49,31 @@ export async function getClips(sessionId: string): Promise<ClipDto[]> {
   return res.json();
 }
 
+async function proposalVerdict(
+  sessionId: string,
+  observationId: string,
+  verdict: "confirm" | "dismiss",
+  actor: string,
+): Promise<void> {
+  const res = await fetch(
+    `/api/sessions/${sessionId}/proposals/${observationId}/${verdict}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actor }),
+    },
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(String(body.detail ?? `${verdict} failed: ${res.status}`));
+  }
+}
+
+export const confirmProposal = (sessionId: string, id: string, actor: string) =>
+  proposalVerdict(sessionId, id, "confirm", actor);
+export const dismissProposal = (sessionId: string, id: string, actor: string) =>
+  proposalVerdict(sessionId, id, "dismiss", actor);
+
 export interface CreateSessionBody {
   label?: string;
   kind: string;

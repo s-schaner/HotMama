@@ -34,6 +34,10 @@ class Settings(BaseSettings):
     worker_lease_seconds: float = 300.0
     """How long a leased analysis job stays claimed before re-queueing."""
 
+    auto_commit_confidence: float | None = None
+    """Auto-commit CV proposals at/above this confidence. None (default) =
+    never auto-commit — every proposal waits for a human. Manual-first."""
+
     def resolve_ui_dist(self) -> Path | None:
         if self.ui_dist is not None:
             return self.ui_dist if self.ui_dist.is_dir() else None

@@ -100,6 +100,30 @@ class PointRecord:
 
 
 @dataclass
+class ProposalRecord:
+    """A CV observation awaiting a human verdict (confirm or dismiss)."""
+
+    event_id: str
+    kind: str
+    proposal: dict[str, Any]
+    confidence: float
+    producer: str
+    actor: str | None
+    occurred_at: datetime
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "event_id": self.event_id,
+            "kind": self.kind,
+            "proposal": dict(self.proposal),
+            "confidence": self.confidence,
+            "producer": self.producer,
+            "actor": self.actor,
+            "occurred_at": self.occurred_at.isoformat(),
+        }
+
+
+@dataclass
 class TagRecord:
     event_id: str
     tag: TagCode
@@ -224,6 +248,8 @@ class MatchState:
     notes: list[dict[str, Any]] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     cv_observations: int = 0
+    proposals: dict[str, ProposalRecord] = field(default_factory=dict)
+    """Pending CV proposals by observation event_id — confirm or dismiss."""
     session_closed: bool = False
     applied_events: int = 0
     last_event_id: str | None = None
@@ -273,6 +299,10 @@ class MatchState:
             "notes": list(self.notes),
             "warnings": list(self.warnings),
             "cv_observations": self.cv_observations,
+            "proposals": [
+                record.to_dict()
+                for record in sorted(self.proposals.values(), key=lambda r: r.occurred_at)
+            ],
             "applied_events": self.applied_events,
             "last_event_id": self.last_event_id,
         }

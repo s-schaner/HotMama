@@ -156,7 +156,7 @@ class TestLease:
             headers=AUTH,
         )
         assert done.status_code == 200
-        assert done.json() == {"status": "done", "appended": 2}
+        assert done.json() == {"status": "done", "appended": 2, "auto_committed": 0}
 
         events = client.get(f"/api/sessions/{session_id}/events").json()
         observations = [e for e in events if e["type"] == "cv_observation"]
@@ -220,6 +220,69 @@ class TestLease:
             headers=AUTH,
         )
         assert rejected.status_code == 422
+
+
+class TestAutoCommit:
+    def test_high_confidence_commits_low_confidence_pends(
+        self, tmp_path: Path
+    ) -> None:
+        with TestClient(
+            create_app(_settings(tmp_path, auto_commit_confidence=0.8))
+        ) as client:
+            session_id = _session_with_rally_chunk(client, tmp_path)
+            job = client.post(
+                "/api/worker/lease", json={"worker": "w1"}, headers=AUTH
+            ).json()
+
+            done = client.post(
+                "/api/worker/complete",
+                json={
+                    "clip_id": job["clip_id"],
+                    "session_id": session_id,
+                    "worker": "w1",
+                    "observations": [
+                        {
+                            "kind": "rally_end_detected",
+                            "confidence": 0.95,
+                            "proposal": {
+                                "type": "rally_ended",
+                                "winner": "us",
+                                "reason": "kill",
+                            },
+                        },
+                        {
+                            "kind": "rally_end_detected",
+                            "confidence": 0.4,
+                            "proposal": {
+                                "type": "rally_ended",
+                                "winner": "them",
+                                "reason": "ace",
+                            },
+                        },
+                    ],
+                },
+                headers=AUTH,
+            )
+            assert done.status_code == 200
+            body = done.json()
+            assert body["appended"] == 2
+            assert body["auto_committed"] == 1
+
+            state = client.get(f"/api/sessions/{session_id}").json()["state"]
+            # One rally was already statted manually in the helper (1-0);
+            # the 0.95 proposal auto-committed another point for us.
+            assert state["current_set"]["us_points"] == 2
+            assert len(state["proposals"]) == 1
+            assert state["proposals"][0]["confidence"] == 0.4
+
+            events = client.get(f"/api/sessions/{session_id}/events").json()
+            committed = [
+                e
+                for e in events
+                if e["type"] == "rally_ended" and e.get("source_event_id")
+            ]
+            assert len(committed) == 1
+            assert committed[0]["producer"] == "cv_well"
 
 
 class TestReferenceWorker:

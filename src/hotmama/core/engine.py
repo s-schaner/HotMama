@@ -34,7 +34,7 @@ from .events import (
     Team,
     TimeoutCalled,
 )
-from .state import MatchState, PointRecord, SetState, TagRecord
+from .state import MatchState, PointRecord, ProposalRecord, SetState, TagRecord
 
 
 class EngineError(ValueError):
@@ -103,6 +103,10 @@ def _validate_retraction(events: Sequence[AnyEvent], retraction: EventRetracted)
 
 
 def _apply(state: MatchState, event: AnyEvent) -> None:
+    # Any event confirmed from a pending proposal resolves that proposal.
+    if event.source_event_id is not None:
+        state.proposals.pop(event.source_event_id, None)
+
     if isinstance(event, SessionCreated):
         _apply_session_created(state, event)
     elif isinstance(event, RosterRegistered):
@@ -135,6 +139,16 @@ def _apply(state: MatchState, event: AnyEvent) -> None:
         )
     elif isinstance(event, CvObservation):
         state.cv_observations += 1
+        if event.proposal is not None:
+            state.proposals[event.event_id] = ProposalRecord(
+                event_id=event.event_id,
+                kind=event.kind,
+                proposal=dict(event.proposal),
+                confidence=event.confidence,
+                producer=event.producer.value,
+                actor=event.actor,
+                occurred_at=event.occurred_at,
+            )
     else:  # pragma: no cover - exhaustiveness guard for future event types
         raise EngineError(f"unhandled event type {type(event).__name__}")
 

@@ -131,6 +131,7 @@ function Session({
             undo={undo}
             notify={showToast}
             sessionId={active.sessionId}
+            actor={actor}
             capture={capture}
             onCaptureStatus={setCapture}
             clips={clips}

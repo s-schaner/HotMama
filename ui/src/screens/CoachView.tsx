@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import { CapturePanel, ClipsPanel } from "../components/CapturePanel";
+import { ProposalsPanel } from "../components/ProposalsPanel";
 import { RotationStrip, rotationOf } from "../components/RotationStrip";
 import { Scoreboard } from "../components/Scoreboard";
 import { SetControls } from "../components/SetControls";
@@ -28,6 +29,7 @@ export function CoachView({
   undo,
   notify,
   sessionId,
+  actor,
   capture,
   onCaptureStatus,
   clips,
@@ -37,6 +39,7 @@ export function CoachView({
   undo: () => void;
   notify: (text: string) => void;
   sessionId: string;
+  actor: string;
   capture: CaptureStatusDto;
   onCaptureStatus: (status: CaptureStatusDto) => void;
   clips: ClipDto[];
@@ -70,6 +73,8 @@ export function CoachView({
           {leak.sentence}
         </div>
       )}
+
+      <ProposalsPanel state={state} sessionId={sessionId} actor={actor} notify={notify} />
 
       {set && (
         <div className="panel">

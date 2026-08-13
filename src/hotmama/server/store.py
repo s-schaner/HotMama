@@ -262,6 +262,13 @@ class EventStore:
             self._conn.commit()
         return dict(row)
 
+    def analysis_job_exists(self, clip_id: str) -> bool:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT 1 FROM analysis_jobs WHERE clip_id = ?", (clip_id,)
+            ).fetchone()
+        return row is not None
+
     def complete_analysis(
         self, clip_id: str, *, ok: bool, error: str | None = None
     ) -> bool:
