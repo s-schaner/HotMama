@@ -193,6 +193,21 @@ export function CoachView({
       />
       <ClipsPanel clips={clips} />
 
+      <div className="row">
+        <button
+          className="small ghost"
+          onClick={() => window.open(`/api/sessions/${sessionId}/report`, "_blank")}
+        >
+          📄 Session report
+        </button>
+        <button
+          className="small ghost"
+          onClick={() => window.open(`/api/sessions/${sessionId}/report.pdf`, "_blank")}
+        >
+          ⬇ PDF
+        </button>
+      </div>
+
       {state.warnings.length > 0 && (
         <div className="panel">
           <h3>Warnings</h3>

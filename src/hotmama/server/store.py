@@ -92,6 +92,15 @@ class EventStore:
             ).fetchone()
         return row is not None
 
+    def get_session(self, session_id: str) -> dict[str, Any] | None:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT session_id, created_at, kind, label, closed FROM sessions"
+                " WHERE session_id = ?",
+                (session_id,),
+            ).fetchone()
+        return dict(row) if row is not None else None
+
     def list_sessions(self) -> list[dict[str, Any]]:
         with self._lock:
             rows = self._conn.execute(

@@ -18,9 +18,11 @@ unknown session → 404.
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from hotmama.capture import (
@@ -31,7 +33,12 @@ from hotmama.capture import (
 )
 from hotmama.core import RosterPlayer, dump_event
 from hotmama.core.events import RosterRegistered, SessionCreated, SessionKind
-from hotmama.core.ids import new_session_id
+from hotmama.core.ids import new_session_id, utcnow
+from hotmama.reports import (
+    ReportUnavailableError,
+    render_report_html,
+    render_report_pdf,
+)
 
 from .sessions import EngineError, NothingToUndoError, SessionManager
 from .store import EventStore, UnknownSessionError
@@ -174,6 +181,39 @@ def build_router(
     async def list_clips(session_id: str) -> list[dict[str, Any]]:
         _require_session(session_id)
         return store.list_clips(session_id)
+
+    async def _report_html(session_id: str) -> str:
+        _require_session(session_id)
+        payload = await manager.state_payload(session_id)
+        row = store.get_session(session_id) or {}
+        return render_report_html(
+            state=payload["state"],
+            summary=payload["summary"],
+            clips=store.list_clips(session_id),
+            label=str(row.get("label", "")),
+            generated_at=utcnow().strftime("%Y-%m-%d %H:%M UTC"),
+        )
+
+    @router.get("/api/sessions/{session_id}/report", response_class=HTMLResponse)
+    async def report_html(session_id: str) -> HTMLResponse:
+        return HTMLResponse(await _report_html(session_id))
+
+    @router.get("/api/sessions/{session_id}/report.pdf")
+    async def report_pdf(session_id: str) -> Response:
+        html = await _report_html(session_id)
+        try:
+            pdf = await asyncio.to_thread(render_report_pdf, html)
+        except ReportUnavailableError as err:
+            raise HTTPException(status_code=503, detail=str(err)) from err
+        return Response(
+            content=pdf,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": (
+                    f'attachment; filename="hotmama-{session_id}.pdf"'
+                )
+            },
+        )
 
     @router.websocket("/ws/sessions/{session_id}")
     async def session_socket(websocket: WebSocket, session_id: str) -> None:

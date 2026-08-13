@@ -15,8 +15,10 @@ jobs:
           python-version: "3.11"
           cache: pip
           cache-dependency-path: pyproject.toml
+      - name: System libs (WeasyPrint)
+        run: sudo apt-get update && sudo apt-get install -y libpango-1.0-0 libpangoft2-1.0-0
       - name: Install
-        run: pip install -e ".[dev,capture]"
+        run: pip install -e ".[dev,capture,reports]"
       - name: Ruff
         run: ruff check .
       - name: Mypy (strict)
