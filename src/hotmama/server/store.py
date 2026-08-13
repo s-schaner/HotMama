@@ -35,6 +35,21 @@ CREATE TABLE IF NOT EXISTS events (
     PRIMARY KEY (session_id, seq)
 );
 CREATE INDEX IF NOT EXISTS idx_events_session ON events(session_id, seq);
+CREATE TABLE IF NOT EXISTS clips (
+    clip_id    TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    event_id   TEXT NOT NULL DEFAULT '',
+    kind       TEXT NOT NULL,
+    label      TEXT NOT NULL DEFAULT '',
+    status     TEXT NOT NULL DEFAULT 'pending',
+    path       TEXT,
+    url        TEXT,
+    start_at   TEXT NOT NULL,
+    end_at     TEXT NOT NULL,
+    error      TEXT,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_clips_session ON clips(session_id, created_at);
 """
 
 
@@ -125,6 +140,63 @@ class EventStore:
             )
             self._conn.commit()
         return seq
+
+    # -- clips ---------------------------------------------------------------
+
+    def insert_clip(
+        self,
+        clip_id: str,
+        *,
+        session_id: str,
+        event_id: str,
+        kind: str,
+        label: str,
+        start_at: str,
+        end_at: str,
+    ) -> None:
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO clips (clip_id, session_id, event_id, kind, label, status,"
+                " start_at, end_at, created_at) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?)",
+                (
+                    clip_id,
+                    session_id,
+                    event_id,
+                    kind,
+                    label,
+                    start_at,
+                    end_at,
+                    utcnow().isoformat(),
+                ),
+            )
+            self._conn.commit()
+
+    def set_clip_ready(self, clip_id: str, *, path: str, url: str) -> None:
+        with self._lock:
+            self._conn.execute(
+                "UPDATE clips SET status = 'ready', path = ?, url = ?, error = NULL"
+                " WHERE clip_id = ?",
+                (path, url, clip_id),
+            )
+            self._conn.commit()
+
+    def set_clip_failed(self, clip_id: str, *, error: str) -> None:
+        with self._lock:
+            self._conn.execute(
+                "UPDATE clips SET status = 'failed', error = ? WHERE clip_id = ?",
+                (error, clip_id),
+            )
+            self._conn.commit()
+
+    def list_clips(self, session_id: str) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT clip_id, session_id, event_id, kind, label, status, url,"
+                " start_at, end_at, error, created_at FROM clips"
+                " WHERE session_id = ? ORDER BY created_at DESC, clip_id DESC",
+                (session_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
 
     def load_events(self, session_id: str, after_seq: int = 0) -> list[dict[str, Any]]:
         """Events in seq order. Each dict is the stored event payload plus ``seq``."""

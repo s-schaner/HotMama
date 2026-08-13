@@ -1,10 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { SessionSocket, type SocketStatus } from "./api";
+import { getCaptureStatus, getClips, SessionSocket, type SocketStatus } from "./api";
 import { CoachView } from "./screens/CoachView";
 import { Join } from "./screens/Join";
 import { StatterView } from "./screens/StatterView";
-import type { Role, ServerMessage, SessionPayload } from "./types";
+import type {
+  CaptureStatusDto,
+  ClipDto,
+  Role,
+  ServerMessage,
+  SessionPayload,
+} from "./types";
 
 interface Active {
   sessionId: string;
@@ -52,6 +58,8 @@ function Session({
   const [payload, setPayload] = useState<SessionPayload | null>(null);
   const [status, setStatus] = useState<SocketStatus>("connecting");
   const [toast, setToast] = useState<string | null>(null);
+  const [capture, setCapture] = useState<CaptureStatusDto>({ state: "idle" });
+  const [clips, setClips] = useState<ClipDto[]>([]);
   const socketRef = useRef<SessionSocket | null>(null);
   const actor = useMemo(() => `${deviceName()}:${active.role}`, [active.role]);
 
@@ -66,6 +74,10 @@ function Session({
       (message: ServerMessage) => {
         if (message.type === "snapshot" || message.type === "event") {
           setPayload(message);
+        } else if (message.type === "capture") {
+          setCapture(message.status);
+        } else if (message.type === "clips") {
+          setClips(message.clips);
         } else if (message.type === "error") {
           showToast(`⚠ ${message.detail}`);
         }
@@ -74,6 +86,8 @@ function Session({
     );
     socketRef.current = socket;
     socket.connect();
+    getCaptureStatus(active.sessionId).then(setCapture).catch(() => undefined);
+    getClips(active.sessionId).then(setClips).catch(() => undefined);
     return () => socket.close();
   }, [active.sessionId, showToast]);
 
@@ -111,7 +125,16 @@ function Session({
         {!payload ? (
           <div className="panel">Connecting to session…</div>
         ) : active.role === "coach" ? (
-          <CoachView payload={payload} append={append} undo={undo} notify={showToast} />
+          <CoachView
+            payload={payload}
+            append={append}
+            undo={undo}
+            notify={showToast}
+            sessionId={active.sessionId}
+            capture={capture}
+            onCaptureStatus={setCapture}
+            clips={clips}
+          />
         ) : (
           <StatterView payload={payload} append={append} undo={undo} notify={showToast} />
         )}

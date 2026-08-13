@@ -168,7 +168,39 @@ export interface ServerError {
   errors?: unknown[];
 }
 
-export type ServerMessage = SessionPayload | ServerError | { type: "pong" };
+export interface CaptureStatusDto {
+  state: "idle" | "recording" | "finished" | "error";
+  error?: string | null;
+  source?: string;
+  codec?: string;
+  fps?: number;
+  width?: number;
+  height?: number;
+  started_at?: string | null;
+  segments?: number;
+  frames_total?: number;
+}
+
+export interface ClipDto {
+  clip_id: string;
+  session_id: string;
+  event_id: string;
+  kind: "tag" | "rally";
+  label: string;
+  status: "pending" | "ready" | "failed";
+  url: string | null;
+  start_at: string;
+  end_at: string;
+  error: string | null;
+  created_at: string;
+}
+
+export type ServerMessage =
+  | SessionPayload
+  | ServerError
+  | { type: "pong" }
+  | { type: "capture"; status: CaptureStatusDto }
+  | { type: "clips"; clips: ClipDto[] };
 
 export interface SessionListItem {
   session_id: string;

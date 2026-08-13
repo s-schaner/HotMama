@@ -23,6 +23,12 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from hotmama.capture import (
+    CaptureConflictError,
+    CaptureService,
+    CaptureUnavailableError,
+    SourceOpenError,
+)
 from hotmama.core import RosterPlayer, dump_event
 from hotmama.core.events import RosterRegistered, SessionCreated, SessionKind
 from hotmama.core.ids import new_session_id
@@ -59,7 +65,20 @@ class UndoRequest(BaseModel):
     actor: str | None = None
 
 
-def build_router(store: EventStore, manager: SessionManager, hub: Hub) -> APIRouter:
+class StartCaptureRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    source: str
+    rally_clips: bool = True
+    tag_clips: bool = True
+
+
+def build_router(
+    store: EventStore,
+    manager: SessionManager,
+    hub: Hub,
+    capture: CaptureService,
+) -> APIRouter:
     router = APIRouter()
 
     @router.get("/api/health")
@@ -119,6 +138,42 @@ def build_router(store: EventStore, manager: SessionManager, hub: Hub) -> APIRou
             raise HTTPException(status_code=404, detail="unknown session") from err
         except NothingToUndoError as err:
             raise HTTPException(status_code=409, detail="nothing to undo") from err
+
+    def _require_session(session_id: str) -> None:
+        if not store.session_exists(session_id):
+            raise HTTPException(status_code=404, detail="unknown session")
+
+    @router.post("/api/sessions/{session_id}/capture")
+    async def start_capture(session_id: str, request: StartCaptureRequest) -> dict[str, Any]:
+        _require_session(session_id)
+        try:
+            return await capture.start(
+                session_id,
+                request.source,
+                rally_clips=request.rally_clips,
+                tag_clips=request.tag_clips,
+            )
+        except CaptureConflictError as err:
+            raise HTTPException(status_code=409, detail=str(err)) from err
+        except SourceOpenError as err:
+            raise HTTPException(status_code=400, detail=str(err)) from err
+        except CaptureUnavailableError as err:
+            raise HTTPException(status_code=503, detail=str(err)) from err
+
+    @router.delete("/api/sessions/{session_id}/capture")
+    async def stop_capture(session_id: str) -> dict[str, Any]:
+        _require_session(session_id)
+        return await capture.stop(session_id)
+
+    @router.get("/api/sessions/{session_id}/capture")
+    async def capture_status(session_id: str) -> dict[str, Any]:
+        _require_session(session_id)
+        return capture.status(session_id)
+
+    @router.get("/api/sessions/{session_id}/clips")
+    async def list_clips(session_id: str) -> list[dict[str, Any]]:
+        _require_session(session_id)
+        return store.list_clips(session_id)
 
     @router.websocket("/ws/sessions/{session_id}")
     async def session_socket(websocket: WebSocket, session_id: str) -> None:

@@ -1,9 +1,16 @@
 import { useState } from "react";
 
+import { CapturePanel, ClipsPanel } from "../components/CapturePanel";
 import { RotationStrip, rotationOf } from "../components/RotationStrip";
 import { Scoreboard } from "../components/Scoreboard";
 import { SetControls } from "../components/SetControls";
-import type { RosterPlayer, SessionPayload, TagCode } from "../types";
+import type {
+  CaptureStatusDto,
+  ClipDto,
+  RosterPlayer,
+  SessionPayload,
+  TagCode,
+} from "../types";
 
 const TAGS: { code: TagCode; label: string; good: boolean }[] = [
   { code: "great_serve", label: "🔥 Great serve", good: true },
@@ -20,11 +27,19 @@ export function CoachView({
   append,
   undo,
   notify,
+  sessionId,
+  capture,
+  onCaptureStatus,
+  clips,
 }: {
   payload: SessionPayload;
   append: (event: Record<string, unknown>) => void;
   undo: () => void;
   notify: (text: string) => void;
+  sessionId: string;
+  capture: CaptureStatusDto;
+  onCaptureStatus: (status: CaptureStatusDto) => void;
+  clips: ClipDto[];
 }) {
   const [tagPlayer, setTagPlayer] = useState<string | null>(null);
   const state = payload.state;
@@ -169,6 +184,14 @@ export function CoachView({
       )}
 
       <PersonnelPanel payload={payload} append={append} />
+
+      <CapturePanel
+        sessionId={sessionId}
+        status={capture}
+        onStatus={onCaptureStatus}
+        notify={notify}
+      />
+      <ClipsPanel clips={clips} />
 
       {state.warnings.length > 0 && (
         <div className="panel">

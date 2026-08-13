@@ -16,7 +16,7 @@ jobs:
           cache: pip
           cache-dependency-path: pyproject.toml
       - name: Install
-        run: pip install -e ".[dev]"
+        run: pip install -e ".[dev,capture]"
       - name: Ruff
         run: ruff check .
       - name: Mypy (strict)

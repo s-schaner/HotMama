@@ -1,11 +1,51 @@
 // REST + WebSocket client. Same-origin in production (the host serves the PWA);
 // the Vite dev server proxies /api and /ws to the host during development.
 
-import type { ServerMessage, SessionListItem, SessionPayload } from "./types";
+import type {
+  CaptureStatusDto,
+  ClipDto,
+  ServerMessage,
+  SessionListItem,
+  SessionPayload,
+} from "./types";
 
 export async function listSessions(): Promise<SessionListItem[]> {
   const res = await fetch("/api/sessions");
   if (!res.ok) throw new Error(`list sessions failed: ${res.status}`);
+  return res.json();
+}
+
+export async function getCaptureStatus(sessionId: string): Promise<CaptureStatusDto> {
+  const res = await fetch(`/api/sessions/${sessionId}/capture`);
+  if (!res.ok) throw new Error(`capture status failed: ${res.status}`);
+  return res.json();
+}
+
+export async function startCapture(
+  sessionId: string,
+  source: string,
+): Promise<CaptureStatusDto> {
+  const res = await fetch(`/api/sessions/${sessionId}/capture`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ source }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(String(body.detail ?? `start failed: ${res.status}`));
+  }
+  return res.json();
+}
+
+export async function stopCapture(sessionId: string): Promise<CaptureStatusDto> {
+  const res = await fetch(`/api/sessions/${sessionId}/capture`, { method: "DELETE" });
+  if (!res.ok) throw new Error(`stop failed: ${res.status}`);
+  return res.json();
+}
+
+export async function getClips(sessionId: string): Promise<ClipDto[]> {
+  const res = await fetch(`/api/sessions/${sessionId}/clips`);
+  if (!res.ok) throw new Error(`clips failed: ${res.status}`);
   return res.json();
 }
 

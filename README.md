@@ -19,9 +19,24 @@ Product requirements straight from the coach: [`docs/product/SPEC.md`](docs/prod
 ```
 src/hotmama/core/       game engine — pure, event-sourced, exhaustively tested
 src/hotmama/analytics/  projections: rotation table, player tallies, runs
+src/hotmama/capture/    camera → segmented recording → event-driven clips
 src/hotmama/server/     FastAPI + WebSocket + SQLite event store
 ui/                     React + Vite PWA (coach view, statter view)
 ```
+
+## Video capture
+
+The host records the camera into rolling 60-second segments on its own clock —
+the same clock that stamps every event — so clips are pure arithmetic:
+
+- **Tag clips** (for humans): a `moment_tagged` event auto-cuts an H.264 clip
+  around the moment; it appears in the coach UI seconds later, playable on any phone.
+- **Rally chunks** (for the Well): every `rally_ended` cuts a stream-copy chunk
+  of that rally — the payload the remote CV workers will consume.
+
+Camera source is whatever the coach types: a USB device index (`0`), an
+`rtsp://` stream, or a video file. ffmpeg comes bundled via `imageio-ffmpeg`
+(the `capture` extra); a system ffmpeg is used when present.
 
 ## Development
 
@@ -30,7 +45,7 @@ Requires Python ≥ 3.11 and Node ≥ 20.
 ```bash
 # Python
 python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
+pip install -e ".[dev,capture]"
 pytest
 ruff check . && mypy
 
