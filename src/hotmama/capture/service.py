@@ -55,6 +55,8 @@ class ClipStore(Protocol):
 
     def list_clips(self, session_id: str) -> list[dict[str, Any]]: ...
 
+    def enqueue_analysis(self, clip_id: str, session_id: str) -> None: ...
+
 
 class CaptureConflictError(RuntimeError):
     """Capture is already running for this session."""
@@ -263,6 +265,7 @@ class CaptureService:
             self._produce_clip(
                 session_id,
                 clip_id=clip_id,
+                kind=kind,
                 start=start,
                 end=end,
                 reencode=reencode,
@@ -276,6 +279,7 @@ class CaptureService:
         session_id: str,
         *,
         clip_id: str,
+        kind: str,
         start: datetime,
         end: datetime,
         reencode: bool,
@@ -296,6 +300,9 @@ class CaptureService:
             self._store.set_clip_ready(
                 clip_id, path=str(out_path), url=self.media_url(session_id, out_path)
             )
+            if kind == "rally":
+                # Feed the pull-worker queue (D15): rally chunks are CV fodder.
+                self._store.enqueue_analysis(clip_id, session_id)
         except (ClipError, TimeoutError) as err:
             self._store.set_clip_failed(clip_id, error=str(err))
         except Exception as err:  # noqa: BLE001 - never let a clip kill the loop

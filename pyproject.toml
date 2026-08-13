@@ -24,6 +24,9 @@ capture = [
 reports = [
     "weasyprint>=61",
 ]
+worker = [
+    "httpx>=0.27",
+]
 dev = [
     "pytest>=8.0",
     "httpx>=0.27",
@@ -33,6 +36,7 @@ dev = [
 
 [project.scripts]
 hotmama = "hotmama.server.cli:main"
+hotmama-worker = "hotmama.worker.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/hotmama"]

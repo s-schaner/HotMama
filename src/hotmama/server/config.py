@@ -29,6 +29,11 @@ class Settings(BaseSettings):
     rally_pad_seconds: float = 2.0
     rally_max_seconds: float = 60.0
 
+    worker_token: str | None = None
+    """Bearer token for the remote-worker feed. Unset = feed disabled (default)."""
+    worker_lease_seconds: float = 300.0
+    """How long a leased analysis job stays claimed before re-queueing."""
+
     def resolve_ui_dist(self) -> Path | None:
         if self.ui_dist is not None:
             return self.ui_dist if self.ui_dist.is_dir() else None

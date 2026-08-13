@@ -78,6 +78,7 @@ Consequences we get for free:
 | D12 | Storage | **SQLite** (WAL) on the host; one DB, tenancy-ready; sessions exportable | Per SPEC. |
 | D13 | Player identity | Our team via body-based re-ID (never faces), opponents by jersey number only; all processing local/on-Well | Per SPEC, with the explicit "no face recognition" guardrail. |
 | D14 | Impact analysis v1 | **Descriptive attribution** ("4 of 6 points lost in rotation 3 were serve-receive"), not statistical correlation — a set is ~25 points; correlation on that sample is noise. LLM narration optional on top | Refinement of SPEC's dream feature. |
+| D15 | Remote analysis topology | **Node-agnostic pull workers.** The court host exposes a token-authed work feed (lease rally chunks → post observations); home nodes PULL over ZeroTier — the host never pushes and never knows the fleet. Aurora's inference network (2× DGX Spark, the Gravity Well [Ubuntu 24.04 / KTransformers / 5090], 2× 4070 Ti boxes) is **never configured or modified by this repo** — a worker is code someone chooses to run on a box, with permission. The Well is one possible worker, not the architecture. | Approved 2026-08-13. Pull confirmed by Stefan; "heavy hitter inference set up later." |
 
 ## 4. Domain model
 

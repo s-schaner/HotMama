@@ -206,6 +206,11 @@ export function CoachView({
         >
           ⬇ PDF
         </button>
+        {state.cv_observations > 0 && (
+          <span className="subtle">
+            🤖 {state.cv_observations} observations from remote workers
+          </span>
+        )}
       </div>
 
       {state.warnings.length > 0 && (

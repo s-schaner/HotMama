@@ -112,6 +112,7 @@ export interface MatchStateDto {
   tags: TagDto[];
   notes: unknown[];
   warnings: string[];
+  cv_observations: number;
   applied_events: number;
   last_event_id: string | null;
 }

@@ -272,6 +272,7 @@ class MatchState:
             "tags": [t.to_dict() for t in self.tags],
             "notes": list(self.notes),
             "warnings": list(self.warnings),
+            "cv_observations": self.cv_observations,
             "applied_events": self.applied_events,
             "last_event_id": self.last_event_id,
         }

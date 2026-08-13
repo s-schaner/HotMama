@@ -50,7 +50,21 @@ CREATE TABLE IF NOT EXISTS clips (
     created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_clips_session ON clips(session_id, created_at);
+CREATE TABLE IF NOT EXISTS analysis_jobs (
+    clip_id       TEXT PRIMARY KEY REFERENCES clips(clip_id),
+    session_id    TEXT NOT NULL,
+    status        TEXT NOT NULL DEFAULT 'pending',
+    worker        TEXT,
+    lease_expires TEXT,
+    attempts      INTEGER NOT NULL DEFAULT 0,
+    error         TEXT,
+    created_at    TEXT NOT NULL,
+    updated_at    TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_analysis_status ON analysis_jobs(status, created_at);
 """
+
+_MAX_ANALYSIS_ATTEMPTS = 3
 
 
 class UnknownSessionError(KeyError):
@@ -206,6 +220,85 @@ class EventStore:
                 (session_id,),
             ).fetchall()
         return [dict(row) for row in rows]
+
+    # -- analysis job queue (pull workers, D15) --------------------------------
+
+    def enqueue_analysis(self, clip_id: str, session_id: str) -> None:
+        now = utcnow().isoformat()
+        with self._lock:
+            self._conn.execute(
+                "INSERT OR IGNORE INTO analysis_jobs (clip_id, session_id, created_at,"
+                " updated_at) VALUES (?, ?, ?, ?)",
+                (clip_id, session_id, now, now),
+            )
+            self._conn.commit()
+
+    def lease_next_analysis(
+        self, worker: str, lease_seconds: float
+    ) -> dict[str, Any] | None:
+        """Atomically claim the oldest pending (or lease-expired) job."""
+        from datetime import timedelta
+
+        now = utcnow()
+        expires = (now + timedelta(seconds=lease_seconds)).isoformat()
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT j.clip_id, j.session_id, j.attempts, c.kind, c.label, c.url,"
+                " c.start_at, c.end_at FROM analysis_jobs j"
+                " JOIN clips c ON c.clip_id = j.clip_id"
+                " WHERE c.status = 'ready' AND ("
+                "   j.status = 'pending'"
+                "   OR (j.status = 'leased' AND j.lease_expires < ?)"
+                " ) ORDER BY j.created_at LIMIT 1",
+                (now.isoformat(),),
+            ).fetchone()
+            if row is None:
+                return None
+            self._conn.execute(
+                "UPDATE analysis_jobs SET status = 'leased', worker = ?,"
+                " lease_expires = ?, updated_at = ? WHERE clip_id = ?",
+                (worker, expires, now.isoformat(), row["clip_id"]),
+            )
+            self._conn.commit()
+        return dict(row)
+
+    def complete_analysis(
+        self, clip_id: str, *, ok: bool, error: str | None = None
+    ) -> bool:
+        """Mark a leased job done (or retry/fail it). Returns False if unknown."""
+        now = utcnow().isoformat()
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT attempts FROM analysis_jobs WHERE clip_id = ?", (clip_id,)
+            ).fetchone()
+            if row is None:
+                return False
+            if ok:
+                self._conn.execute(
+                    "UPDATE analysis_jobs SET status = 'done', error = NULL,"
+                    " updated_at = ? WHERE clip_id = ?",
+                    (now, clip_id),
+                )
+            else:
+                attempts = int(row["attempts"]) + 1
+                status = "failed" if attempts >= _MAX_ANALYSIS_ATTEMPTS else "pending"
+                self._conn.execute(
+                    "UPDATE analysis_jobs SET status = ?, attempts = ?, error = ?,"
+                    " worker = NULL, lease_expires = NULL, updated_at = ?"
+                    " WHERE clip_id = ?",
+                    (status, attempts, error, now, clip_id),
+                )
+            self._conn.commit()
+        return True
+
+    def analysis_overview(self, session_id: str) -> dict[str, int]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT status, COUNT(*) AS n FROM analysis_jobs"
+                " WHERE session_id = ? GROUP BY status",
+                (session_id,),
+            ).fetchall()
+        return {str(row["status"]): int(row["n"]) for row in rows}
 
     def load_events(self, session_id: str, after_seq: int = 0) -> list[dict[str, Any]]:
         """Events in seq order. Each dict is the stored event payload plus ``seq``."""

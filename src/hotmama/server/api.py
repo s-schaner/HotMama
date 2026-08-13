@@ -21,8 +21,8 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse, Response
+from fastapi import APIRouter, Header, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from hotmama.capture import (
@@ -32,7 +32,13 @@ from hotmama.capture import (
     SourceOpenError,
 )
 from hotmama.core import RosterPlayer, dump_event
-from hotmama.core.events import RosterRegistered, SessionCreated, SessionKind
+from hotmama.core.events import (
+    CvObservation,
+    Producer,
+    RosterRegistered,
+    SessionCreated,
+    SessionKind,
+)
 from hotmama.core.ids import new_session_id, utcnow
 from hotmama.reports import (
     ReportUnavailableError,
@@ -40,6 +46,7 @@ from hotmama.reports import (
     render_report_pdf,
 )
 
+from .config import Settings
 from .sessions import EngineError, NothingToUndoError, SessionManager
 from .store import EventStore, UnknownSessionError
 from .ws import Hub
@@ -80,11 +87,38 @@ class StartCaptureRequest(BaseModel):
     tag_clips: bool = True
 
 
+class WorkerLeaseRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    worker: str = Field(min_length=1, max_length=80)
+
+
+class WorkerObservation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    kind: str = Field(min_length=1, max_length=80)
+    data: dict[str, Any] = Field(default_factory=dict)
+    confidence: float = Field(default=1.0, ge=0.0, le=1.0)
+
+
+class WorkerCompleteRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    clip_id: str
+    session_id: str
+    worker: str = Field(min_length=1, max_length=80)
+    ok: bool = True
+    error: str | None = None
+    producer: Producer = Producer.CV_WELL
+    observations: list[WorkerObservation] = Field(default_factory=list, max_length=200)
+
+
 def build_router(
     store: EventStore,
     manager: SessionManager,
     hub: Hub,
     capture: CaptureService,
+    settings: Settings,
 ) -> APIRouter:
     router = APIRouter()
 
@@ -181,6 +215,81 @@ def build_router(
     async def list_clips(session_id: str) -> list[dict[str, Any]]:
         _require_session(session_id)
         return store.list_clips(session_id)
+
+    # -- remote pull-worker feed (D15) ------------------------------------------
+
+    def _check_worker_auth(authorization: str | None) -> None:
+        if settings.worker_token is None:
+            raise HTTPException(
+                status_code=503,
+                detail="worker feed disabled — set HOTMAMA_WORKER_TOKEN on the host",
+            )
+        if authorization != f"Bearer {settings.worker_token}":
+            raise HTTPException(status_code=401, detail="invalid worker token")
+
+    @router.post("/api/worker/lease")
+    async def worker_lease(
+        request: WorkerLeaseRequest,
+        authorization: str | None = Header(default=None),
+    ) -> Response:
+        _check_worker_auth(authorization)
+        job = store.lease_next_analysis(request.worker, settings.worker_lease_seconds)
+        if job is None:
+            return Response(status_code=204)
+        session_row = store.get_session(str(job["session_id"])) or {}
+        return JSONResponse(
+            {
+                "clip_id": job["clip_id"],
+                "session_id": job["session_id"],
+                "kind": job["kind"],
+                "label": job["label"],
+                "clip_url": job["url"],
+                "start_at": job["start_at"],
+                "end_at": job["end_at"],
+                "attempts": job["attempts"],
+                "session": {
+                    "label": session_row.get("label", ""),
+                    "kind": session_row.get("kind", ""),
+                },
+            }
+        )
+
+    @router.post("/api/worker/complete")
+    async def worker_complete(
+        request: WorkerCompleteRequest,
+        authorization: str | None = Header(default=None),
+    ) -> dict[str, Any]:
+        _check_worker_auth(authorization)
+        if request.producer not in (Producer.CV_WELL, Producer.CV_CLOUD):
+            raise HTTPException(status_code=422, detail="producer must be a CV producer")
+        if not request.ok:
+            known = store.complete_analysis(
+                request.clip_id, ok=False, error=request.error or "worker error"
+            )
+            if not known:
+                raise HTTPException(status_code=404, detail="unknown analysis job")
+            return {"status": "requeued_or_failed", "appended": 0}
+
+        appended = 0
+        for observation in request.observations:
+            event = CvObservation(
+                kind=observation.kind,
+                data={**observation.data, "clip_id": request.clip_id},
+                confidence=observation.confidence,
+                producer=request.producer,
+                actor=request.worker,
+            )
+            await _append(manager, request.session_id, dump_event(event), request.worker)
+            appended += 1
+        known = store.complete_analysis(request.clip_id, ok=True)
+        if not known:
+            raise HTTPException(status_code=404, detail="unknown analysis job")
+        return {"status": "done", "appended": appended}
+
+    @router.get("/api/sessions/{session_id}/analysis")
+    async def analysis_overview(session_id: str) -> dict[str, int]:
+        _require_session(session_id)
+        return store.analysis_overview(session_id)
 
     async def _report_html(session_id: str) -> str:
         _require_session(session_id)

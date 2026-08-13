@@ -38,6 +38,27 @@ Camera source is whatever the coach types: a USB device index (`0`), an
 `rtsp://` stream, or a video file. ffmpeg comes bundled via `imageio-ffmpeg`
 (the `capture` extra); a system ffmpeg is used when present.
 
+## Remote analysis workers (pull model)
+
+Heavy inference never runs courtside. The host exposes a token-authed work
+feed; any box the operator chooses (home GPU rig over ZeroTier, a cloud VM)
+runs a worker that **pulls** rally chunks and posts observations back, which
+land in the session's event log as `cv_observation` events with provenance
+and confidence. This repo never configures or deploys to remote machines —
+a worker is started by hand, where and when its operator decides.
+
+```bash
+# On the court host: enable the feed
+HOTMAMA_WORKER_TOKEN=<shared-secret> hotmama serve
+
+# On any analysis box (install: pip install "hotmama[worker,capture] @ git+...")
+hotmama-worker --host http://<court-host>:8000 --token <shared-secret>
+```
+
+The default `stub` engine decodes each chunk and reports basic stats — it
+proves the loop. Real CV engines plug in behind the same `AnalysisEngine`
+protocol (`src/hotmama/worker/engine.py`) without touching the transport.
+
 ## Development
 
 Requires Python ≥ 3.11 and Node ≥ 20.

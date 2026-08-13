@@ -61,7 +61,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    app.include_router(build_router(store, manager, hub, capture))
+    app.include_router(build_router(store, manager, hub, capture, settings))
 
     settings.media_root.mkdir(parents=True, exist_ok=True)
     app.mount("/media", StaticFiles(directory=settings.media_root), name="media")
