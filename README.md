@@ -59,6 +59,28 @@ The default `stub` engine decodes each chunk and reports basic stats — it
 proves the loop. Real CV engines plug in behind the same `AnalysisEngine`
 protocol (`src/hotmama/worker/engine.py`) without touching the transport.
 
+### The `vlm` engine (vision-language analysis)
+
+Samples frames from each rally chunk (first and last always included) and
+asks an OpenAI-compatible vision endpoint (vLLM) for a strict-JSON rally
+summary — ball landed near/far, serve visible, jersey numbers seen. The
+observations are deliberately attribution-free until court calibration
+lands; team mapping is never guessed. Tiers live in a config file
+(`examples/vlm-tiers.example.json` documents the current corona tiers):
+
+```bash
+# Sanity-check a tier's vision path (no court host needed)
+hotmama-worker --probe-vlm --vlm-url http://corona:8005 --vlm-model qwen3-vl-8b
+
+# Run a vision worker on the standard tier
+hotmama-worker --host http://<court-host>:8000 --token <shared-secret> \
+    --engine vlm --vlm-config examples/vlm-tiers.example.json --vlm-tier standard
+```
+
+The LLM set-summary feature can share the big tier — on the court host:
+`HOTMAMA_LLM_PROVIDER=openai HOTMAMA_LLM_BASE_URL=http://corona:8000
+HOTMAMA_LLM_MODEL=qwen3-vl-30b`.
+
 ## Development
 
 Requires Python ≥ 3.11 and Node ≥ 20.

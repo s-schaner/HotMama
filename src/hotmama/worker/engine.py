@@ -78,15 +78,36 @@ class StubEngine:
             capture.release()
 
 
-ENGINES: dict[str, type] = {"stub": StubEngine}
+def _make_stub(options: dict[str, Any]) -> AnalysisEngine:
+    return StubEngine()
 
 
-def make_engine(name: str) -> AnalysisEngine:
+def _make_vlm(options: dict[str, Any]) -> AnalysisEngine:
+    from .vlm import VlmClient, VlmEngine
+
+    base_url = options.get("vlm_base_url")
+    model = options.get("vlm_model")
+    if not base_url or not model:
+        raise ValueError(
+            "the vlm engine needs an endpoint: pass --vlm-url and --vlm-model, "
+            "or --vlm-config with --vlm-tier"
+        )
+    client = VlmClient(
+        base_url=str(base_url),
+        model=str(model),
+        api_key=options.get("vlm_api_key"),
+    )
+    return VlmEngine(client, frame_count=int(options.get("vlm_frames", 6)))
+
+
+ENGINES = {"stub": _make_stub, "vlm": _make_vlm}
+
+
+def make_engine(name: str, options: dict[str, Any] | None = None) -> AnalysisEngine:
     try:
-        engine_cls = ENGINES[name]
+        factory = ENGINES[name]
     except KeyError as err:
         raise ValueError(
             f"unknown engine {name!r} — available: {', '.join(sorted(ENGINES))}"
         ) from err
-    engine: AnalysisEngine = engine_cls()
-    return engine
+    return factory(options or {})

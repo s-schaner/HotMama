@@ -285,6 +285,59 @@ class TestAutoCommit:
             assert committed[0]["producer"] == "cv_well"
 
 
+class TestVlmWorkerLoop:
+    def test_vlm_engine_full_loop(self, client: TestClient, tmp_path: Path) -> None:
+        import httpx
+
+        from hotmama.worker.vlm import VlmClient, VlmEngine
+
+        session_id = _session_with_rally_chunk(client, tmp_path)
+
+        summary = {
+            "rally_visible": True,
+            "description": "Rally ends with a ball down near side.",
+            "ball_landed": "near",
+            "serve_visible": True,
+            "jersey_numbers": [9],
+            "confidence": 0.66,
+        }
+
+        def vision_handler(request: httpx.Request) -> httpx.Response:
+            import json as _json
+
+            body = _json.loads(request.content)
+            assert body["model"] == "qwen3-vl-8b"
+            assert any(
+                part["type"] == "image_url"
+                for part in body["messages"][0]["content"][1:]
+            )
+            return httpx.Response(
+                200,
+                json={"choices": [{"message": {"content": _json.dumps(summary)}}]},
+            )
+
+        vlm_client = VlmClient(
+            base_url="http://corona:8005",
+            model="qwen3-vl-8b",
+            http=httpx.Client(transport=httpx.MockTransport(vision_handler)),
+        )
+        worker = WorkerClient(
+            token=TOKEN,
+            worker_name="corona-worker",
+            engine=VlmEngine(vlm_client, frame_count=4),
+            http=client,
+        )
+        assert worker.run_once() is True
+
+        events = client.get(f"/api/sessions/{session_id}/events").json()
+        observation = next(e for e in events if e["type"] == "cv_observation")
+        assert observation["kind"] == "vlm_rally_summary"
+        assert observation["confidence"] == 0.66
+        assert observation["data"]["jersey_numbers"] == [9]
+        assert observation["actor"] == "corona-worker"
+        assert client.get(f"/api/sessions/{session_id}/analysis").json() == {"done": 1}
+
+
 class TestReferenceWorker:
     def test_worker_client_full_loop(self, client: TestClient, tmp_path: Path) -> None:
         session_id = _session_with_rally_chunk(client, tmp_path)

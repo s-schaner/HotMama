@@ -1,0 +1,23 @@
+{
+  "_comment": "Vision inference tiers on the local network. Copy, adjust, pass via --vlm-config. Endpoints are operator configuration — the repo never assumes a box (D15/D16).",
+  "tiers": {
+    "deep": {
+      "base_url": "http://corona:8000",
+      "model": "qwen3-vl-30b",
+      "max_frames": 8,
+      "_notes": "DGX Spark 'corona' — text+image, 262k ctx. Film review / hardest calls."
+    },
+    "standard": {
+      "base_url": "http://corona:8005",
+      "model": "qwen3-vl-8b",
+      "max_frames": 6,
+      "_notes": "131k ctx. Default near-live rally analysis tier."
+    },
+    "fast": {
+      "base_url": "http://corona:8004",
+      "model": "qwen3-vl-4b",
+      "max_frames": 4,
+      "_notes": "16k ctx — keep frame count low. Cheap triage."
+    }
+  }
+}
