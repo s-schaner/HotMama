@@ -1,143 +1,117 @@
-# HotMama — Robust Vision Pipeline
+# HotMama v2 — Volleyball Analytics
 
-> Deterministic, hardware-aware deployment for the HotMama computer-vision stack.
+Live volleyball statting and analytics that a coach can actually trust. Built for Mo.
 
-## 🚀 One-Line Install
+- **Live statting** on a phone/tablet PWA — score, rotation, side-out %, moment tagging —
+  every rally closeable in ~3 taps, every mistake correctable, nothing ever silently wrong.
+- **Event-sourced engine**: every fact is an event in an append-only log; all stats are
+  replayable projections. Corrections heal history.
+- **Video from day one**: the session host records on a shared clock; tagged moments
+  become clips.
+- **Heavy AI off-box**: CV and VLM inference run on a home GPU rig over ZeroTier or on
+  configurable cloud endpoints — the courtside laptop only captures, serves, and scores.
+
+Full architecture and the decision log: [`docs/DESIGN.md`](docs/DESIGN.md).
+Product requirements straight from the coach: [`docs/product/SPEC.md`](docs/product/SPEC.md).
+
+## Layout
+
+```
+src/hotmama/core/       game engine — pure, event-sourced, exhaustively tested
+src/hotmama/analytics/  projections: rotation table, player tallies, runs
+src/hotmama/capture/    camera → segmented recording → event-driven clips
+src/hotmama/server/     FastAPI + WebSocket + SQLite event store
+ui/                     React + Vite PWA (coach view, statter view)
+```
+
+## Video capture
+
+The host records the camera into rolling 60-second segments on its own clock —
+the same clock that stamps every event — so clips are pure arithmetic:
+
+- **Tag clips** (for humans): a `moment_tagged` event auto-cuts an H.264 clip
+  around the moment; it appears in the coach UI seconds later, playable on any phone.
+- **Rally chunks** (for the Well): every `rally_ended` cuts a stream-copy chunk
+  of that rally — the payload the remote CV workers will consume.
+
+Camera source is whatever the coach types: a USB device index (`0`), an
+`rtsp://` stream, or a video file. ffmpeg comes bundled via `imageio-ffmpeg`
+(the `capture` extra); a system ffmpeg is used when present.
+
+## Remote analysis workers (pull model)
+
+Heavy inference never runs courtside. The host exposes a token-authed work
+feed; any box the operator chooses (home GPU rig over ZeroTier, a cloud VM)
+runs a worker that **pulls** rally chunks and posts observations back, which
+land in the session's event log as `cv_observation` events with provenance
+and confidence. This repo never configures or deploys to remote machines —
+a worker is started by hand, where and when its operator decides.
 
 ```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/s-schaner/HotMama/main/tools/bootstrap.sh)"
+# On the court host: enable the feed
+HOTMAMA_WORKER_TOKEN=<shared-secret> hotmama serve
+
+# On any analysis box (install: pip install "hotmama[worker,capture] @ git+...")
+hotmama-worker --host http://<court-host>:8000 --token <shared-secret>
 ```
 
-The installer clones the repository, probes hardware, installs Docker prerequisites, selects the correct compose profile (CPU/NVIDIA GPU/experimental ROCm), and launches the stack.
+The default `stub` engine decodes each chunk and reports basic stats — it
+proves the loop. Real CV engines plug in behind the same `AnalysisEngine`
+protocol (`src/hotmama/worker/engine.py`) without touching the transport.
 
-## 🧱 Architecture Overview
+### The `vlm` engine (vision-language analysis)
 
-```
-deploy/
-  api/           FastAPI gateway (Python 3.11, CPU)
-  worker-vision/ Vision workers (CPU + CUDA targets)
-  gui/           Gradio control surface (Python 3.11, CPU)
-  scripts/       Shared runtime helpers (Redis wait, etc.)
-  base-images/   Documentation for base container pins
-```
-
-Supporting infrastructure:
-
-- **Redis 7.2.4 (alpine)** provides the job queue and status storage.
-- **docker-compose** orchestrates services with profiles:
-  - `default` → API + Redis + CPU worker
-  - `gpu` → API + Redis + CUDA worker (auto-selected when NVIDIA GPUs detected)
-  - `rocm` → reserved for future AMD builds (marked experimental)
-- Artifacts are persisted under `./sessions/` and shared between services.
-- Optional **GUI**: visit `http://localhost:7860` (default) to queue jobs and inspect artifacts.
-
-## 🔁 Runtime Flow
-
-1. API receives a job (`POST /v1/jobs`) and enqueues a JSON payload in Redis.
-2. Worker pops jobs, lazily loads the Torch/ONNX/OpenCV toolchain, processes the input, and writes a playback artifact (`result.mp4`/`result.mkv`) alongside structured metadata (`result.json`).
-3. API exposes job status (`GET /v1/jobs/{id}`) and serves artifacts once complete.
-
-Both services share configuration through `.env` (generated automatically). Logging can be toggled to JSON by setting `LOG_JSON=1`.
-
-## 🛠 Development
-
-Clone manually if preferred:
+Samples frames from each rally chunk (first and last always included) and
+asks an OpenAI-compatible vision endpoint (vLLM) for a strict-JSON rally
+summary — ball landed near/far, serve visible, jersey numbers seen. The
+observations are deliberately attribution-free until court calibration
+lands; team mapping is never guessed. Tiers live in a config file
+(`examples/vlm-tiers.example.json` documents the current corona tiers):
 
 ```bash
-git clone https://github.com/s-schaner/HotMama.git
-cd HotMama
-cp .env.example .env
+# Sanity-check a tier's vision path (no court host needed)
+hotmama-worker --probe-vlm --vlm-url http://corona:8005 --vlm-model qwen3-vl-8b
+
+# Run a vision worker on the standard tier
+hotmama-worker --host http://<court-host>:8000 --token <shared-secret> \
+    --engine vlm --vlm-config examples/vlm-tiers.example.json --vlm-tier standard
 ```
 
-Install Python tooling (requires 3.11):
+The LLM set-summary feature can share the big tier — on the court host:
+`HOTMAMA_LLM_PROVIDER=openai HOTMAMA_LLM_BASE_URL=http://corona:8000
+HOTMAMA_LLM_MODEL=qwen3-vl-30b`.
+
+### The `detect` engine (detection + tracking)
+
+YOLO person detection (ultralytics, loaded lazily) fed through ByteTrack
+(`trackers` package, with `supervision.Detections` as the currency). Emits
+pixel-space `player_tracks` observations per rally chunk: persistent track
+count, players visible avg/max, and a center-density grid — the seed of
+position heatmaps. One-frame ghosts never count. Needs the `detect` extra
+(`pip install "hotmama[detect,capture]"`, pulls torch):
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r deploy/api/requirements.api.txt \
-            -r deploy/worker-vision/requirements.worker.cpu.txt
-# Optional CUDA tooling for local GPU runs
-# pip install -r deploy/worker-vision/requirements.worker.cuda.txt
-pip install fastapi[all] pytest ruff black mypy  # development extras
+hotmama-worker --host http://<court-host>:8000 --token <shared-secret> \
+    --engine detect --detect-model yolo11n.pt --detect-stride 3
 ```
 
-> The production containers remain slim; install only the dev dependencies you need locally.
+## Development
 
-### Local Docker Compose
-
-Launch helpers are provided under `tools/` so you can spin up the full stack with a single command:
+Requires Python ≥ 3.11 and Node ≥ 20.
 
 ```bash
-./tools/launch_cpu.sh
-```
-
-The CPU script builds the images, exports `PROFILE=cpu`, and brings up the API, Redis, worker, and GUI services. To exercise the CUDA worker, use the GPU variant (requires NVIDIA Container Toolkit):
-
-```bash
-./tools/launch_gpu.sh
-```
-
-Both scripts print follow-up log commands once the containers are running. You can still call `docker compose` directly if you prefer manual control.
-
-### Testing & Quality Gates
-
-```bash
-ruff check .
-black --check .
-mypy deploy/api deploy/worker-vision
+# Python
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev,capture]"
 pytest
+ruff check . && mypy
+
+# Server (serves API + built UI)
+hotmama serve  # or: uvicorn hotmama.server.app:create_app --factory --reload
+
+# UI
+cd ui && npm install && npm run dev
 ```
 
-Run the integration smoke test (uses Docker):
-
-```bash
-./tools/test_compose_smoke.sh
-```
-
-### Elegant Shutdown
-
-Allow in-flight jobs to finish, then stop the stack cleanly:
-
-```bash
-docker compose stop
-docker compose down --remove-orphans
-```
-
-`docker compose stop` sends a `SIGTERM` to each service so workers can flush logs and close Redis connections. `docker compose down --remove-orphans` then tears down the containers and network once everything has exited. If you launched with the GPU profile, repeat the commands with `--profile gpu` to ensure the CUDA worker shuts down gracefully.
-
-## 📡 API Quick Reference
-
-- `GET /v1/healthz` — health check
-- `POST /v1/jobs` — enqueue job (`{"payload": {"source_uri": "/path/video.mp4"}}`)
-- `GET /v1/jobs/{id}` — job status
-- `GET /v1/jobs/{id}/artifact` — download artifact
-
-## 🔐 Configuration Matrix
-
-| Variable | Default | Description |
-| --- | --- | --- |
-| `PROFILE` | `cpu` | docker-compose profile (`cpu`, `gpu`, `rocm`) |
-| `REDIS_URL` | `redis://queue:6379/0` | Redis connection string |
-| `REDIS_QUEUE_NAME` | `hotmama:jobs` | Redis list for job dispatch |
-| `REDIS_STATUS_PREFIX` | `hotmama:job` | Prefix for job metadata hashes |
-| `ARTIFACT_DIR` | `/app/sessions` | Shared artifact directory |
-| `LOG_JSON` | `0` | Emit JSON logs when set to `1` |
-| `GUI_API_BASE_URL` | `http://api:8000/v1` | GUI → API endpoint |
-| `GUI_PORT` | `7860` | GUI listening port |
-
-## 🧭 Troubleshooting
-
-- **Docker not found** — rerun the bootstrap script; it installs Docker CE on Ubuntu/Debian and prints instructions for other OSes.
-- **GPU not used** — ensure `nvidia-smi` works on the host and rerun bootstrap. The script installs NVIDIA Container Toolkit on Linux (when sudo/root available).
-- **Artifacts missing** — check worker logs (`docker compose logs worker-vision-cpu`). The worker stores artifacts under `./sessions/<job-id>/result.(mp4|mkv)` plus `result.json` metadata.
-- **WSL2 GPU** — enable GPU support in Windows settings and ensure the NVIDIA drivers are installed in Windows.
-
-## 📄 Additional Docs
-
-- [`MIGRATION.md`](MIGRATION.md) — map from the legacy monolith to the new services.
-- [`CHANGELOG_AUTO_AUDIT.md`](CHANGELOG_AUTO_AUDIT.md) — structured change log for automated audits.
-- [`AUTO_AUDIT_REPORT.md`](AUTO_AUDIT_REPORT.md) — human-readable summary with risk notes.
-
-## 📜 License
-
-This project retains the original licensing terms of HotMama. Refer to the repository history for legacy components.
+The v1 codebase (generic video-AI pipeline) was removed in the v2 rewrite; it remains in
+git history at `c290465`.
