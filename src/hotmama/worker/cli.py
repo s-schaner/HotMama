@@ -50,10 +50,16 @@ def _build_parser() -> argparse.ArgumentParser:
         "--detect-model", default="yolo11n.pt", help="ultralytics model name/path"
     )
     detect.add_argument(
-        "--detect-conf", type=float, default=0.35, help="detection confidence floor"
+        "--detect-conf", type=float, default=0.3, help="detection confidence floor"
     )
     detect.add_argument(
         "--detect-stride", type=int, default=3, help="process every Nth frame"
+    )
+    detect.add_argument(
+        "--detect-imgsz",
+        type=int,
+        default=1280,
+        help="inference size; 1280+ needed to see far-half players",
     )
 
     vlm = parser.add_argument_group("vlm engine")

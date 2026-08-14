@@ -122,6 +122,7 @@ class CourtCalibration:
             image_corners=tuple((x * sx, y * sy) for x, y in self.image_corners),
             frame_width=width,
             frame_height=height,
+            mode=self.mode,
         )
 
     # -- serialization ------------------------------------------------------

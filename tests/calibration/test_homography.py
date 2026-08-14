@@ -100,6 +100,17 @@ class TestSerializationAndValidation:
         assert point.x == pytest.approx(4.5, abs=0.01)
         assert point.y == pytest.approx(9.0, abs=0.01)
 
+    def test_scaled_to_preserves_mode(self) -> None:
+        # Regression: mode was dropped on rescale, silently remapping
+        # near-half calibrations as full-court (caught on real footage).
+        near = CourtCalibration(
+            image_corners=RECT.image_corners,
+            frame_width=900,
+            frame_height=1000,
+            mode="near_half",
+        )
+        assert near.scaled_to(1800, 2000).mode == "near_half"
+
     def test_rejects_bad_input(self) -> None:
         with pytest.raises(CalibrationError, match="4 corners"):
             CourtCalibration(

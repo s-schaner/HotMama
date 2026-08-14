@@ -35,11 +35,21 @@ class FrameDetector(Protocol):
 
 
 class UltralyticsDetector:
-    """YOLO via ultralytics, imported only when actually constructed."""
+    """YOLO via ultralytics, imported only when actually constructed.
 
-    def __init__(self, model_name: str = "yolo11n.pt", confidence: float = 0.35) -> None:
+    ``imgsz`` matters enormously for end-court volleyball: at the default 640
+    the compressed far half starves the detector. 1280+ finds every on-court
+    player on real 1080p footage (validated 2026-08-14).
+    """
+
+    def __init__(
+        self,
+        model_name: str = "yolo11n.pt",
+        confidence: float = 0.3,
+        imgsz: int = 1280,
+    ) -> None:
         try:
-            from ultralytics import YOLO
+            from ultralytics import YOLO  # type: ignore[attr-defined]
         except ImportError as err:
             raise DetectError(
                 "the detect engine's default detector needs ultralytics — "
@@ -50,11 +60,14 @@ class UltralyticsDetector:
         self._sv = sv
         self._model = YOLO(model_name)
         self._confidence = confidence
+        self._imgsz = imgsz
         self.name = model_name
 
     def detect(self, frame: Any) -> Any:
-        result = self._model(frame, verbose=False, conf=self._confidence)[0]
-        detections = self._sv.Detections.from_ultralytics(result)
+        results: Any = self._model(
+            frame, verbose=False, conf=self._confidence, imgsz=self._imgsz
+        )
+        detections = self._sv.Detections.from_ultralytics(results[0])
         return detections[detections.class_id == PERSON_CLASS_ID]
 
 
@@ -93,10 +106,13 @@ class DetectEngine:
             raise DetectError(f"could not open clip {clip_path}")
 
         fps = float(capture.get(cv2.CAP_PROP_FPS) or 0.0) or 30.0
+        # Far-half players on end-court footage detect at ~0.25-0.4 confidence
+        # (small + compressed); activation gates above that erase the far half
+        # entirely (validated 2026-08-14). Persistence filtering handles noise.
         tracker = ByteTrackTracker(
             frame_rate=max(1.0, fps / self._stride),
-            track_activation_threshold=0.4,
-            high_conf_det_threshold=0.5,
+            track_activation_threshold=0.25,
+            high_conf_det_threshold=0.45,
             minimum_consecutive_frames=2,
         )
 

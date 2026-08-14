@@ -110,7 +110,8 @@ def _make_detect(options: dict[str, Any]) -> AnalysisEngine:
     else:
         detector = UltralyticsDetector(
             model_name=str(options.get("detect_model", "yolo11n.pt")),
-            confidence=float(options.get("detect_conf", 0.35)),
+            confidence=float(options.get("detect_conf", 0.3)),
+            imgsz=int(options.get("detect_imgsz", 1280)),
         )
     return DetectEngine(
         detector,
