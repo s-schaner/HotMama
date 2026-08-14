@@ -45,6 +45,17 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--poll", type=float, default=5.0, help="idle poll interval (s)")
     parser.add_argument("--once", action="store_true", help="process one job and exit")
 
+    detect = parser.add_argument_group("detect engine")
+    detect.add_argument(
+        "--detect-model", default="yolo11n.pt", help="ultralytics model name/path"
+    )
+    detect.add_argument(
+        "--detect-conf", type=float, default=0.35, help="detection confidence floor"
+    )
+    detect.add_argument(
+        "--detect-stride", type=int, default=3, help="process every Nth frame"
+    )
+
     vlm = parser.add_argument_group("vlm engine")
     vlm.add_argument("--vlm-url", help="OpenAI-compatible vision endpoint base URL")
     vlm.add_argument("--vlm-model", help="vision model name at the endpoint")

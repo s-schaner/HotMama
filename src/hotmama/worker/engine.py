@@ -100,7 +100,25 @@ def _make_vlm(options: dict[str, Any]) -> AnalysisEngine:
     return VlmEngine(client, frame_count=int(options.get("vlm_frames", 6)))
 
 
-ENGINES = {"stub": _make_stub, "vlm": _make_vlm}
+def _make_detect(options: dict[str, Any]) -> AnalysisEngine:
+    from .detect import DetectEngine, FrameDetector, UltralyticsDetector
+
+    detector: FrameDetector
+    injected = options.get("detector")
+    if injected is not None:  # embedding/testing hook
+        detector = injected
+    else:
+        detector = UltralyticsDetector(
+            model_name=str(options.get("detect_model", "yolo11n.pt")),
+            confidence=float(options.get("detect_conf", 0.35)),
+        )
+    return DetectEngine(
+        detector,
+        stride=int(options.get("detect_stride", 3)),
+    )
+
+
+ENGINES = {"stub": _make_stub, "vlm": _make_vlm, "detect": _make_detect}
 
 
 def make_engine(name: str, options: dict[str, Any] | None = None) -> AnalysisEngine:

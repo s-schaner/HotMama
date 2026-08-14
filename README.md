@@ -81,6 +81,20 @@ The LLM set-summary feature can share the big tier — on the court host:
 `HOTMAMA_LLM_PROVIDER=openai HOTMAMA_LLM_BASE_URL=http://corona:8000
 HOTMAMA_LLM_MODEL=qwen3-vl-30b`.
 
+### The `detect` engine (detection + tracking)
+
+YOLO person detection (ultralytics, loaded lazily) fed through ByteTrack
+(`trackers` package, with `supervision.Detections` as the currency). Emits
+pixel-space `player_tracks` observations per rally chunk: persistent track
+count, players visible avg/max, and a center-density grid — the seed of
+position heatmaps. One-frame ghosts never count. Needs the `detect` extra
+(`pip install "hotmama[detect,capture]"`, pulls torch):
+
+```bash
+hotmama-worker --host http://<court-host>:8000 --token <shared-secret> \
+    --engine detect --detect-model yolo11n.pt --detect-stride 3
+```
+
 ## Development
 
 Requires Python ≥ 3.11 and Node ≥ 20.

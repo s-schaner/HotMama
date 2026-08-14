@@ -1,5 +1,6 @@
 {
   "_comment": "Vision inference tiers on the local network. Copy, adjust, pass via --vlm-config. Endpoints are operator configuration — the repo never assumes a box (D15/D16).",
+  "_addresses": "hostname 'corona' resolves to 10.187.0.27 over ZeroTier (use from the gym/court host) and 192.168.86.80 on the home LAN (use from home-side workers); substitute the address that matches where the worker runs",
   "tiers": {
     "deep": {
       "base_url": "http://corona:8000",
