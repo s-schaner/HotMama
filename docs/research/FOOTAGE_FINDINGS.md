@@ -44,6 +44,16 @@ scenarios. All numbers below: yolo11n unless stated, CPU inference.
   detections; engine now activates at 0.25 and relies on persistence
   filtering for noise.
 
+## Corner/side mounts (school-gym clip)
+
+The school-gym clip is an elevated sideline-corner view: the net crosses
+mid-frame and **one court corner is cut off outside the frame**. Detection
+handles the glossy floor and glare fine (17-34 persons at imgsz 1600), but
+4-corner calibration cannot be tapped when a corner is not visible.
+Follow-ups queued for the calibration UI: pan/zoom in the corner picker,
+and a "custom reference points" mode using any four known line
+intersections (attack-line × sideline etc.) instead of court corners.
+
 ## Product posture (unchanged, now evidence-backed)
 
 Near-half analytics (Mo's team when the camera is at her end) are the
