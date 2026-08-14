@@ -50,6 +50,11 @@ CREATE TABLE IF NOT EXISTS clips (
     created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_clips_session ON clips(session_id, created_at);
+CREATE TABLE IF NOT EXISTS rosters (
+    name       TEXT PRIMARY KEY,
+    players    TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS analysis_jobs (
     clip_id       TEXT PRIMARY KEY REFERENCES clips(clip_id),
     session_id    TEXT NOT NULL,
@@ -163,6 +168,38 @@ class EventStore:
             )
             self._conn.commit()
         return seq
+
+    # -- saved rosters -----------------------------------------------------------
+
+    def save_roster(self, name: str, players: list[dict[str, Any]]) -> None:
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO rosters (name, players, updated_at) VALUES (?, ?, ?)"
+                " ON CONFLICT(name) DO UPDATE SET players = excluded.players,"
+                " updated_at = excluded.updated_at",
+                (name, json.dumps(players), utcnow().isoformat()),
+            )
+            self._conn.commit()
+
+    def list_rosters(self) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT name, players, updated_at FROM rosters ORDER BY name"
+            ).fetchall()
+        return [
+            {
+                "name": row["name"],
+                "players": json.loads(row["players"]),
+                "updated_at": row["updated_at"],
+            }
+            for row in rows
+        ]
+
+    def delete_roster(self, name: str) -> bool:
+        with self._lock:
+            cursor = self._conn.execute("DELETE FROM rosters WHERE name = ?", (name,))
+            self._conn.commit()
+        return cursor.rowcount > 0
 
     # -- clips ---------------------------------------------------------------
 

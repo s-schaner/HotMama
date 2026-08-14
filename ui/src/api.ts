@@ -74,6 +74,38 @@ export const confirmProposal = (sessionId: string, id: string, actor: string) =>
 export const dismissProposal = (sessionId: string, id: string, actor: string) =>
   proposalVerdict(sessionId, id, "dismiss", actor);
 
+export interface SavedRoster {
+  name: string;
+  players: {
+    player_id: string;
+    name: string;
+    jersey: number | null;
+    is_libero: boolean;
+  }[];
+  updated_at: string;
+}
+
+export async function listRosters(): Promise<SavedRoster[]> {
+  const res = await fetch("/api/rosters");
+  if (!res.ok) throw new Error(`rosters failed: ${res.status}`);
+  return res.json();
+}
+
+export async function saveRoster(
+  name: string,
+  players: SavedRoster["players"],
+): Promise<void> {
+  const res = await fetch(`/api/rosters/${encodeURIComponent(name)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ players }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(String(body.detail ?? `save failed: ${res.status}`));
+  }
+}
+
 export async function requestSummary(
   sessionId: string,
   actor: string,

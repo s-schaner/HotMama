@@ -1,7 +1,30 @@
 import { useEffect, useState } from "react";
 
-import { createSession, listSessions } from "../api";
+import {
+  createSession,
+  listRosters,
+  listSessions,
+  saveRoster,
+  type SavedRoster,
+} from "../api";
 import type { Role, SessionListItem } from "../types";
+
+/** Average-size squad, ready to edit: 12 players, #12 as libero. */
+const DEFAULT_TEMPLATE = Array.from({ length: 12 }, (_, index) => ({
+  player_id: `p${index + 1}`,
+  name: `Player ${index + 1}`,
+  jersey: index + 1,
+  is_libero: index === 11,
+}));
+
+function rosterToText(players: SavedRoster["players"]): string {
+  return players
+    .map(
+      (player) =>
+        `${player.name}, ${player.jersey ?? ""}${player.is_libero ? ", L" : ""}`,
+    )
+    .join("\n");
+}
 
 /**
  * Roster entry format, one player per line: `Name, jersey[, L]`.
@@ -39,12 +62,53 @@ export function Join({ onEnter }: { onEnter: (sessionId: string, role: Role) => 
   const [kind, setKind] = useState("match");
   const [bestOf, setBestOf] = useState(5);
   const [rosterText, setRosterText] = useState("");
+  const [savedRosters, setSavedRosters] = useState<SavedRoster[]>([]);
+  const [rosterName, setRosterName] = useState("");
+  const [savingRoster, setSavingRoster] = useState(false);
 
   useEffect(() => {
     listSessions()
       .then(setSessions)
       .catch(() => setError("Can't reach the court host — is the server running?"));
+    listRosters()
+      .then(setSavedRosters)
+      .catch(() => undefined);
   }, []);
+
+  const loadTemplate = (value: string) => {
+    if (value === "default") {
+      setRosterText(rosterToText(DEFAULT_TEMPLATE));
+      setRosterName("");
+      return;
+    }
+    const saved = savedRosters.find((roster) => roster.name === value);
+    if (saved) {
+      setRosterText(rosterToText(saved.players));
+      setRosterName(saved.name);
+    }
+  };
+
+  const persistRoster = async () => {
+    const players = parseRoster(rosterText);
+    if (players.length < 6) {
+      setError("Need at least 6 players before saving a roster");
+      return;
+    }
+    if (!rosterName.trim()) {
+      setError("Give the roster a name to save it");
+      return;
+    }
+    setSavingRoster(true);
+    setError(null);
+    try {
+      await saveRoster(rosterName.trim(), players);
+      setSavedRosters(await listRosters());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSavingRoster(false);
+    }
+  };
 
   const create = async () => {
     setCreating(true);
@@ -145,7 +209,21 @@ export function Join({ onEnter }: { onEnter: (sessionId: string, role: Role) => 
               </select>
             </label>
           </div>
-          <label className="field" style={{ marginBottom: "0.6rem" }}>
+          <label className="field" style={{ marginBottom: "0.5rem" }}>
+            Start from
+            <select defaultValue="" onChange={(e) => loadTemplate(e.target.value)}>
+              <option value="" disabled>
+                Pick a template or saved roster…
+              </option>
+              <option value="default">Default squad (12 players)</option>
+              {savedRosters.map((roster) => (
+                <option key={roster.name} value={roster.name}>
+                  💾 {roster.name} ({roster.players.length})
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field" style={{ marginBottom: "0.5rem" }}>
             Roster — one per line: Name, jersey (add “, L” for libero)
             <textarea
               value={rosterText}
@@ -153,6 +231,21 @@ export function Join({ onEnter }: { onEnter: (sessionId: string, role: Role) => 
               placeholder={"Maya, 7\nJo, 12\nSam, 3\nAlex, 9\nRiley, 5\nCasey, 11\nDrew, 2, L"}
             />
           </label>
+          <div className="row" style={{ marginBottom: "0.6rem" }}>
+            <input
+              value={rosterName}
+              onChange={(e) => setRosterName(e.target.value)}
+              placeholder="Roster name (e.g. HotMama 2026)"
+              style={{ flex: 1 }}
+            />
+            <button
+              className="small"
+              disabled={savingRoster || !rosterText.trim()}
+              onClick={persistRoster}
+            >
+              {savingRoster ? "Saving…" : "💾 Save roster"}
+            </button>
+          </div>
           {error && <div className="banner warn" style={{ marginBottom: "0.6rem" }}>{error}</div>}
           <button className="primary" disabled={creating} onClick={create}>
             {creating ? "Creating…" : "Create & join"}

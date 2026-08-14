@@ -91,6 +91,12 @@ class StartCaptureRequest(BaseModel):
 EXPORT_FORMAT = "hotmama.session.v1"
 
 
+class SaveRosterRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    players: list[RosterPlayer] = Field(min_length=6, max_length=30)
+
+
 class ImportSessionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -230,6 +236,40 @@ def build_router(
     async def list_clips(session_id: str) -> list[dict[str, Any]]:
         _require_session(session_id)
         return store.list_clips(session_id)
+
+    # -- saved rosters (type once, reuse all season) ------------------------------
+
+    @router.get("/api/rosters")
+    async def list_rosters() -> list[dict[str, Any]]:
+        return store.list_rosters()
+
+    @router.put("/api/rosters/{name}")
+    async def save_roster(name: str, request: SaveRosterRequest) -> dict[str, Any]:
+        name = name.strip()
+        if not name or len(name) > 60:
+            raise HTTPException(status_code=422, detail="roster name must be 1-60 chars")
+        seen_ids: set[str] = set()
+        seen_jerseys: set[int] = set()
+        for player in request.players:
+            if player.player_id in seen_ids:
+                raise HTTPException(
+                    status_code=422, detail=f"duplicate player_id {player.player_id!r}"
+                )
+            seen_ids.add(player.player_id)
+            if player.jersey is not None:
+                if player.jersey in seen_jerseys:
+                    raise HTTPException(
+                        status_code=422, detail=f"duplicate jersey {player.jersey}"
+                    )
+                seen_jerseys.add(player.jersey)
+        store.save_roster(name, [player.model_dump() for player in request.players])
+        return {"name": name, "players": len(request.players)}
+
+    @router.delete("/api/rosters/{name}")
+    async def delete_roster(name: str) -> dict[str, str]:
+        if not store.delete_roster(name):
+            raise HTTPException(status_code=404, detail="unknown roster")
+        return {"deleted": name}
 
     # -- export / import ----------------------------------------------------------
 
