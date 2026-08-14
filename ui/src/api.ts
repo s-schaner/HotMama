@@ -106,6 +106,33 @@ export async function saveRoster(
   }
 }
 
+export interface Venue {
+  name: string;
+  calibration: Record<string, unknown>;
+  updated_at: string;
+}
+
+export async function listVenues(): Promise<Venue[]> {
+  const res = await fetch("/api/venues");
+  if (!res.ok) throw new Error(`venues failed: ${res.status}`);
+  return res.json();
+}
+
+export async function saveVenue(
+  name: string,
+  calibration: Record<string, unknown>,
+): Promise<void> {
+  const res = await fetch(`/api/venues/${encodeURIComponent(name)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ calibration }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(String(body.detail ?? `save venue failed: ${res.status}`));
+  }
+}
+
 export async function requestSummary(
   sessionId: string,
   actor: string,
@@ -134,6 +161,7 @@ export interface CreateSessionBody {
     jersey: number | null;
     is_libero: boolean;
   }[];
+  venue?: string | null;
   actor?: string;
 }
 

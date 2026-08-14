@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import { requestSummary } from "../api";
+import { CalibrationPanel } from "../components/CalibrationPanel";
 import { CapturePanel, ClipsPanel } from "../components/CapturePanel";
 import { ProposalsPanel } from "../components/ProposalsPanel";
 import { RotationStrip, rotationOf } from "../components/RotationStrip";
@@ -210,6 +211,12 @@ export function CoachView({
         status={capture}
         onStatus={onCaptureStatus}
         notify={notify}
+      />
+      <CalibrationPanel
+        sessionId={sessionId}
+        recording={capture.state === "recording"}
+        notify={notify}
+        onSaved={() => undefined}
       />
       <ClipsPanel clips={clips} />
 

@@ -139,12 +139,18 @@ class Recorder(threading.Thread):
         self._segment_started: datetime | None = None
         self._segment_frames = 0
         self._cv2: Any = None
+        self._latest_jpeg: bytes | None = None
 
     # -- public ------------------------------------------------------------
 
     def status(self) -> RecorderStatus:
         with self._status_lock:
             return RecorderStatus(**vars(self._status))
+
+    def latest_jpeg(self) -> bytes | None:
+        """The most recent frame as JPEG — the calibration UI taps on this."""
+        with self._status_lock:
+            return self._latest_jpeg
 
     def stop(self) -> None:
         self._stop_flag.set()
@@ -177,6 +183,14 @@ class Recorder(threading.Thread):
             self._segment_frames += 1
             with self._status_lock:
                 self._status.frames_total += 1
+                refresh_snapshot = self._status.frames_total % 15 == 1
+            if refresh_snapshot:
+                ok, buffer = self._cv2.imencode(
+                    ".jpg", frame, [int(self._cv2.IMWRITE_JPEG_QUALITY), 85]
+                )
+                if ok:
+                    with self._status_lock:
+                        self._latest_jpeg = buffer.tobytes()
 
     def _segment_expired(self, now: datetime) -> bool:
         assert self._segment_started is not None

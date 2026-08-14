@@ -7,6 +7,7 @@ writes one team's data; cloud sync later is a data move, not a migration.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import sqlite3
 import threading
@@ -55,6 +56,11 @@ CREATE TABLE IF NOT EXISTS rosters (
     players    TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS venues (
+    name        TEXT PRIMARY KEY,
+    calibration TEXT NOT NULL,
+    updated_at  TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS analysis_jobs (
     clip_id       TEXT PRIMARY KEY REFERENCES clips(clip_id),
     session_id    TEXT NOT NULL,
@@ -90,17 +96,23 @@ class EventStore:
             self._conn.execute("PRAGMA journal_mode=WAL")
             self._conn.execute("PRAGMA foreign_keys=ON")
             self._conn.executescript(_SCHEMA)
+            # Additive migration for pre-venue databases (no-op once present).
+            with contextlib.suppress(sqlite3.OperationalError):
+                self._conn.execute("ALTER TABLE sessions ADD COLUMN venue TEXT")
             self._conn.commit()
 
     def close(self) -> None:
         with self._lock:
             self._conn.close()
 
-    def create_session(self, session_id: str, *, kind: str, label: str) -> None:
+    def create_session(
+        self, session_id: str, *, kind: str, label: str, venue: str | None = None
+    ) -> None:
         with self._lock:
             self._conn.execute(
-                "INSERT INTO sessions (session_id, created_at, kind, label) VALUES (?, ?, ?, ?)",
-                (session_id, utcnow().isoformat(), kind, label),
+                "INSERT INTO sessions (session_id, created_at, kind, label, venue)"
+                " VALUES (?, ?, ?, ?, ?)",
+                (session_id, utcnow().isoformat(), kind, label, venue),
             )
             self._conn.commit()
 
@@ -114,11 +126,57 @@ class EventStore:
     def get_session(self, session_id: str) -> dict[str, Any] | None:
         with self._lock:
             row = self._conn.execute(
-                "SELECT session_id, created_at, kind, label, closed FROM sessions"
+                "SELECT session_id, created_at, kind, label, closed, venue FROM sessions"
                 " WHERE session_id = ?",
                 (session_id,),
             ).fetchone()
         return dict(row) if row is not None else None
+
+    # -- venues (saved calibrations, one per gym) --------------------------------
+
+    def save_venue(self, name: str, calibration: dict[str, Any]) -> None:
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO venues (name, calibration, updated_at) VALUES (?, ?, ?)"
+                " ON CONFLICT(name) DO UPDATE SET calibration = excluded.calibration,"
+                " updated_at = excluded.updated_at",
+                (name, json.dumps(calibration), utcnow().isoformat()),
+            )
+            self._conn.commit()
+
+    def get_venue(self, name: str) -> dict[str, Any] | None:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT name, calibration, updated_at FROM venues WHERE name = ?",
+                (name,),
+            ).fetchone()
+        if row is None:
+            return None
+        return {
+            "name": row["name"],
+            "calibration": json.loads(row["calibration"]),
+            "updated_at": row["updated_at"],
+        }
+
+    def list_venues(self) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT name, calibration, updated_at FROM venues ORDER BY name"
+            ).fetchall()
+        return [
+            {
+                "name": row["name"],
+                "calibration": json.loads(row["calibration"]),
+                "updated_at": row["updated_at"],
+            }
+            for row in rows
+        ]
+
+    def delete_venue(self, name: str) -> bool:
+        with self._lock:
+            cursor = self._conn.execute("DELETE FROM venues WHERE name = ?", (name,))
+            self._conn.commit()
+        return cursor.rowcount > 0
 
     def list_sessions(self) -> list[dict[str, Any]]:
         with self._lock:

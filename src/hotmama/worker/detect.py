@@ -100,11 +100,14 @@ class DetectEngine:
             minimum_consecutive_frames=2,
         )
 
+        calibration = self._load_calibration(job)
+
         width = height = 0
         frames_processed = 0
         frame_track_ids: list[list[int]] = []
         track_frames: dict[int, int] = {}
         track_hits: dict[int, list[tuple[int, int]]] = {}
+        track_feet: dict[int, list[tuple[float, float]]] = {}
         track_confidence: dict[int, list[float]] = {}
 
         try:
@@ -142,6 +145,10 @@ class DetectEngine:
                     col = min(self._grid - 1, int((x1 + x2) / 2 / width * self._grid))
                     row = min(self._grid - 1, int((y1 + y2) / 2 / height * self._grid))
                     track_hits.setdefault(track_id, []).append((row, col))
+                    # Feet are on the ground plane — the point homography maps.
+                    track_feet.setdefault(track_id, []).append(
+                        (float(x1 + x2) / 2.0, float(y2))
+                    )
                     if det_conf is not None:
                         track_confidence.setdefault(track_id, []).append(float(det_conf))
                 frame_track_ids.append(ids_this_frame)
@@ -176,24 +183,74 @@ class DetectEngine:
             min(0.95, max(0.1, mean_confidence)) if persistent else 0.1
         )
 
+        data: dict[str, Any] = {
+            "engine": self.name,
+            "frames_processed": frames_processed,
+            "stride": self._stride,
+            "resolution": {"width": width, "height": height},
+            "players_max": max(per_frame_counts, default=0),
+            "players_avg": round(sum(per_frame_counts) / len(per_frame_counts), 2)
+            if per_frame_counts
+            else 0.0,
+            "distinct_tracks": len(persistent),
+            "grid": self._grid,
+            "center_grid": grid_counts,
+        }
+        if calibration is not None and width > 0:
+            data["court"] = self._court_stats(
+                calibration.scaled_to(width, height), track_feet, persistent
+            )
+
         return [
             {
                 "kind": "player_tracks",
-                "data": {
-                    "engine": self.name,
-                    "frames_processed": frames_processed,
-                    "stride": self._stride,
-                    "resolution": {"width": width, "height": height},
-                    "players_max": max(per_frame_counts, default=0),
-                    "players_avg": round(
-                        sum(per_frame_counts) / len(per_frame_counts), 2
-                    )
-                    if per_frame_counts
-                    else 0.0,
-                    "distinct_tracks": len(persistent),
-                    "grid": self._grid,
-                    "center_grid": grid_counts,
-                },
+                "data": data,
                 "confidence": round(observation_confidence, 3),
             }
         ]
+
+    @staticmethod
+    def _load_calibration(job: dict[str, Any]) -> Any | None:
+        raw = job.get("calibration")
+        if not isinstance(raw, dict):
+            return None
+        try:
+            from hotmama.calibration import CourtCalibration
+
+            return CourtCalibration.from_dict(raw)
+        except Exception:  # noqa: BLE001 - bad calibration must not kill analysis
+            LOGGER.warning("ignoring invalid calibration in job")
+            return None
+
+    def _court_stats(
+        self,
+        calibration: Any,
+        track_feet: dict[int, list[tuple[float, float]]],
+        persistent: set[int],
+    ) -> dict[str, Any]:
+        """Foot positions → meters: near/far presence + a 3×6 court cell grid."""
+        cols, rows = 3, 6  # x thirds × 3m depth bands over the 18m court
+        cell_counts = [0] * (cols * rows)
+        near = far = out_of_bounds = 0
+        for track_id in persistent:
+            points = calibration.image_to_court(track_feet.get(track_id, []))
+            for point in points:
+                if not point.in_bounds:
+                    out_of_bounds += 1
+                    continue
+                if point.half == "near":
+                    near += 1
+                elif point.half == "far":
+                    far += 1
+                col = min(cols - 1, int(point.x / (9.0 / cols)))
+                row = min(rows - 1, int(point.y / (18.0 / rows)))
+                cell_counts[row * cols + col] += 1
+        return {
+            "mode": calibration.mode,
+            "near_hits": near,
+            "far_hits": far,
+            "out_of_bounds_hits": out_of_bounds,
+            "cell_grid_cols": cols,
+            "cell_grid_rows": rows,
+            "cell_grid": cell_counts,
+        }

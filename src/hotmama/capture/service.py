@@ -161,6 +161,12 @@ class CaptureService:
             return {"state": state}
         return active.recorder.status().to_dict()
 
+    def latest_frame(self, session_id: str) -> bytes | None:
+        active = self._active.get(session_id)
+        if active is None:
+            return None
+        return active.recorder.latest_jpeg()
+
     async def shutdown(self) -> None:
         for session_id in list(self._active):
             await self.stop(session_id)

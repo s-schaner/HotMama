@@ -4,8 +4,10 @@ import {
   createSession,
   listRosters,
   listSessions,
+  listVenues,
   saveRoster,
   type SavedRoster,
+  type Venue,
 } from "../api";
 import type { Role, SessionListItem } from "../types";
 
@@ -65,6 +67,8 @@ export function Join({ onEnter }: { onEnter: (sessionId: string, role: Role) => 
   const [savedRosters, setSavedRosters] = useState<SavedRoster[]>([]);
   const [rosterName, setRosterName] = useState("");
   const [savingRoster, setSavingRoster] = useState(false);
+  const [venues, setVenues] = useState<Venue[]>([]);
+  const [venue, setVenue] = useState("");
 
   useEffect(() => {
     listSessions()
@@ -72,6 +76,9 @@ export function Join({ onEnter }: { onEnter: (sessionId: string, role: Role) => 
       .catch(() => setError("Can't reach the court host — is the server running?"));
     listRosters()
       .then(setSavedRosters)
+      .catch(() => undefined);
+    listVenues()
+      .then(setVenues)
       .catch(() => undefined);
   }, []);
 
@@ -125,6 +132,7 @@ export function Join({ onEnter }: { onEnter: (sessionId: string, role: Role) => 
         opponent,
         best_of: bestOf,
         roster,
+        venue: venue || null,
       });
       onEnter(result.session_id, role);
     } catch (err) {
@@ -206,6 +214,17 @@ export function Join({ onEnter }: { onEnter: (sessionId: string, role: Role) => 
                 <option value={5}>Best of 5</option>
                 <option value={3}>Best of 3</option>
                 <option value={1}>Single set</option>
+              </select>
+            </label>
+            <label className="field">
+              Venue (calibration)
+              <select value={venue} onChange={(e) => setVenue(e.target.value)}>
+                <option value="">None yet — calibrate in-session</option>
+                {venues.map((entry) => (
+                  <option key={entry.name} value={entry.name}>
+                    🎯 {entry.name}
+                  </option>
+                ))}
               </select>
             </label>
           </div>

@@ -25,6 +25,7 @@ from fastapi import APIRouter, Header, HTTPException, WebSocket, WebSocketDiscon
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from hotmama.calibration import CalibrationError, CourtCalibration
 from hotmama.capture import (
     CaptureConflictError,
     CaptureService,
@@ -64,6 +65,7 @@ class CreateSessionRequest(BaseModel):
     set_points: int = Field(default=25, ge=1, le=99)
     final_set_points: int = Field(default=15, ge=1, le=99)
     roster: list[RosterPlayer] = Field(default_factory=list)
+    venue: str | None = None
     actor: str | None = None
 
 
@@ -95,6 +97,12 @@ class SaveRosterRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     players: list[RosterPlayer] = Field(min_length=6, max_length=30)
+
+
+class SaveVenueRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    calibration: dict[str, Any]
 
 
 class ImportSessionRequest(BaseModel):
@@ -153,7 +161,11 @@ def build_router(
             raise HTTPException(status_code=422, detail="best_of must be 1, 3, or 5")
         session_id = new_session_id()
         label = request.label or f"{request.our_team} vs {request.opponent}"
-        store.create_session(session_id, kind=request.kind.value, label=label)
+        if request.venue is not None and store.get_venue(request.venue) is None:
+            raise HTTPException(status_code=422, detail=f"unknown venue {request.venue!r}")
+        store.create_session(
+            session_id, kind=request.kind.value, label=label, venue=request.venue
+        )
         created = SessionCreated(
             kind=request.kind,
             our_team=request.our_team,
@@ -236,6 +248,40 @@ def build_router(
     async def list_clips(session_id: str) -> list[dict[str, Any]]:
         _require_session(session_id)
         return store.list_clips(session_id)
+
+    # -- venues: one saved calibration per gym (SPEC: calibrate once a season) ----
+
+    @router.get("/api/venues")
+    async def list_venues() -> list[dict[str, Any]]:
+        return store.list_venues()
+
+    @router.put("/api/venues/{name}")
+    async def save_venue(name: str, request: SaveVenueRequest) -> dict[str, Any]:
+        name = name.strip()
+        if not name or len(name) > 60:
+            raise HTTPException(status_code=422, detail="venue name must be 1-60 chars")
+        try:
+            calibration = CourtCalibration.from_dict(request.calibration)
+        except CalibrationError as err:
+            raise HTTPException(status_code=422, detail=str(err)) from err
+        store.save_venue(name, calibration.to_dict())
+        return {"name": name, "mode": calibration.mode}
+
+    @router.delete("/api/venues/{name}")
+    async def delete_venue(name: str) -> dict[str, str]:
+        if not store.delete_venue(name):
+            raise HTTPException(status_code=404, detail="unknown venue")
+        return {"deleted": name}
+
+    @router.get("/api/sessions/{session_id}/capture/frame")
+    async def capture_frame(session_id: str) -> Response:
+        _require_session(session_id)
+        frame = capture.latest_frame(session_id)
+        if frame is None:
+            raise HTTPException(
+                status_code=404, detail="no live frame — is a recording running?"
+            )
+        return Response(content=frame, media_type="image/jpeg")
 
     # -- saved rosters (type once, reuse all season) ------------------------------
 
@@ -339,6 +385,8 @@ def build_router(
         if job is None:
             return Response(status_code=204)
         session_row = store.get_session(str(job["session_id"])) or {}
+        venue_name = session_row.get("venue")
+        venue = store.get_venue(venue_name) if venue_name else None
         return JSONResponse(
             {
                 "clip_id": job["clip_id"],
@@ -352,7 +400,9 @@ def build_router(
                 "session": {
                     "label": session_row.get("label", ""),
                     "kind": session_row.get("kind", ""),
+                    "venue": venue_name,
                 },
+                "calibration": venue["calibration"] if venue else None,
             }
         )
 

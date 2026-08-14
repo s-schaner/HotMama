@@ -113,3 +113,32 @@ def test_factory_registered_and_injectable() -> None:
     assert "detect" in ENGINES
     engine = make_engine("detect", {"detector": FakeDetector(), "detect_stride": 2})
     assert engine.name == "detect:fake"
+
+
+def test_calibrated_job_adds_court_stats(clip: Path) -> None:
+    # Full frame == full court; image bottom = near baseline. FakeDetector
+    # feet sit at y≈100-105 of 120 → shallow NEAR-half court positions.
+    calibration = {
+        "image_corners": [[0.0, 120.0], [160.0, 120.0], [160.0, 0.0], [0.0, 0.0]],
+        "frame_width": 160,
+        "frame_height": 120,
+        "mode": "full",
+    }
+    engine = DetectEngine(FakeDetector(), stride=1, min_track_frames=3)
+    data = engine.analyze(clip, {"calibration": calibration})[0]["data"]
+
+    court = data["court"]
+    assert court["mode"] == "full"
+    assert court["near_hits"] > 0
+    assert court["far_hits"] == 0
+    assert court["cell_grid_cols"] == 3 and court["cell_grid_rows"] == 6
+    assert sum(court["cell_grid"]) == court["near_hits"] + court["far_hits"]
+    # Shallow depth: all hits land in the first two 3m bands.
+    deep_rows = sum(court["cell_grid"][2 * 3 :])
+    assert deep_rows == 0
+
+
+def test_invalid_calibration_ignored(clip: Path) -> None:
+    engine = DetectEngine(FakeDetector(), stride=1)
+    data = engine.analyze(clip, {"calibration": {"image_corners": "garbage"}})[0]["data"]
+    assert "court" not in data
