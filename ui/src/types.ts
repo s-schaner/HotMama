@@ -72,6 +72,7 @@ export interface SetDto {
   liberos: string[];
   finished: boolean;
   won_by: Team | null;
+  our_side: "near" | "far" | null;
   decided: Team | null;
   set_point: Team | null;
   rally_in_progress: boolean;
@@ -123,6 +124,15 @@ export interface MatchStateDto {
   notes: unknown[];
   warnings: string[];
   cv_observations: number;
+  court_heatmap: {
+    cols: number;
+    rows: number;
+    cells: number[];
+    near_hits: number;
+    far_hits: number;
+    out_of_bounds_hits: number;
+    observations: number;
+  };
   proposals: ProposalDto[];
   applied_events: number;
   last_event_id: string | null;

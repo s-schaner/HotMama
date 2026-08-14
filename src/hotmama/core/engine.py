@@ -30,6 +30,7 @@ from .events import (
     SessionCreated,
     SetEnded,
     SetStarted,
+    SidesSet,
     SubMade,
     Team,
     TimeoutCalled,
@@ -127,6 +128,9 @@ def _apply(state: MatchState, event: AnyEvent) -> None:
         _apply_libero_swap(state, event)
     elif isinstance(event, TimeoutCalled):
         _apply_timeout(state, event)
+    elif isinstance(event, SidesSet):
+        current = _open_set(state)
+        current.our_side = event.our_side
     elif isinstance(event, SetEnded):
         _apply_set_ended(state, event)
     elif isinstance(event, SessionClosed):
@@ -139,6 +143,7 @@ def _apply(state: MatchState, event: AnyEvent) -> None:
         )
     elif isinstance(event, CvObservation):
         state.cv_observations += 1
+        _accumulate_heatmap(state, event)
         if event.proposal is not None:
             state.proposals[event.event_id] = ProposalRecord(
                 event_id=event.event_id,
@@ -156,6 +161,25 @@ def _apply(state: MatchState, event: AnyEvent) -> None:
 def _require(condition: bool, message: str) -> None:
     if not condition:
         raise EngineError(message)
+
+
+def _accumulate_heatmap(state: MatchState, event: CvObservation) -> None:
+    """Fold a player_tracks court grid into the session heatmap (replay-safe)."""
+    court = event.data.get("court")
+    if not isinstance(court, dict):
+        return
+    cells = court.get("cell_grid")
+    if not isinstance(cells, list) or len(cells) != len(state.heatmap_cells):
+        return
+    try:
+        for index, value in enumerate(cells):
+            state.heatmap_cells[index] += int(value)
+        state.heatmap_near += int(court.get("near_hits", 0))
+        state.heatmap_far += int(court.get("far_hits", 0))
+        state.heatmap_oob += int(court.get("out_of_bounds_hits", 0))
+        state.heatmap_observations += 1
+    except (TypeError, ValueError):
+        return
 
 
 def _open_set(state: MatchState) -> SetState:

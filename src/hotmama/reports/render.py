@@ -143,6 +143,40 @@ ul { margin: 6px 0 0 18px; padding: 0; }
 """
 
 
+def _heatmap_section(state: dict[str, Any]) -> str:
+    heatmap = state.get("court_heatmap") or {}
+    if not heatmap.get("observations"):
+        return ""
+    cols, rows = int(heatmap.get("cols", 3)), int(heatmap.get("rows", 6))
+    cells = heatmap.get("cells", [])
+    if len(cells) != cols * rows:
+        return ""
+    peak = max(max(cells), 1)
+    body_rows = []
+    for view_row in range(rows):  # far half on top
+        data_row = rows - 1 - view_row
+        tds = []
+        for col in range(cols):
+            value = int(cells[data_row * cols + col])
+            heat = value / peak
+            style = (
+                f"background: rgba(217,93,42,{0.05 + heat * 0.75:.2f});"
+                "text-align:center; padding:10px 0; border:1px solid #e3e8ee;"
+            )
+            if view_row == rows // 2:
+                style += "border-top:3px solid #d9a13f;"
+            tds.append(f"<td style='{style}'>{value or ''}</td>")
+        body_rows.append(f"<tr>{''.join(tds)}</tr>")
+    on_court = int(heatmap.get("near_hits", 0)) + int(heatmap.get("far_hits", 0))
+    return f"""
+  <h2>Court coverage</h2>
+  <div class="meta">far half on top · net marked ·
+    {heatmap.get('observations')} analyzed rallies ·
+    {on_court} on-court positions ({heatmap.get('out_of_bounds_hits')} bystanders filtered)</div>
+  <table style="max-width: 340px">{''.join(body_rows)}</table>
+"""
+
+
 def render_report_html(
     *,
     state: dict[str, Any],
@@ -196,6 +230,7 @@ def render_report_html(
 
   <h2>Momentum</h2>
   <ul>{_runs_list(state, summary)}</ul>
+{_heatmap_section(state)}
 
   <h2>Tagged moments</h2>
   <table>

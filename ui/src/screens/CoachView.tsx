@@ -3,6 +3,7 @@ import { useState } from "react";
 import { requestSummary } from "../api";
 import { CalibrationPanel } from "../components/CalibrationPanel";
 import { CapturePanel, ClipsPanel } from "../components/CapturePanel";
+import { CourtHeatmap } from "../components/CourtHeatmap";
 import { ProposalsPanel } from "../components/ProposalsPanel";
 import { RotationStrip, rotationOf } from "../components/RotationStrip";
 import { Scoreboard } from "../components/Scoreboard";
@@ -177,7 +178,7 @@ export function CoachView({
               −1 them
             </button>
           </div>
-          <div className="grid4">
+          <div className="grid4" style={{ marginBottom: "0.6rem" }}>
             <button
               className="small"
               onClick={() => append({ type: "timeout_called", team: "us" })}
@@ -201,8 +202,25 @@ export function CoachView({
               End set
             </button>
           </div>
+          <div className="row">
+            <span className="crumb">On camera, we are:</span>
+            <button
+              className={`small ${set.our_side === "near" ? "us" : "ghost"}`}
+              onClick={() => append({ type: "sides_set", our_side: "near" })}
+            >
+              Near side
+            </button>
+            <button
+              className={`small ${set.our_side === "far" ? "us" : "ghost"}`}
+              onClick={() => append({ type: "sides_set", our_side: "far" })}
+            >
+              Far side
+            </button>
+          </div>
         </div>
       )}
+
+      <CourtHeatmap state={state} />
 
       <PersonnelPanel payload={payload} append={append} />
 

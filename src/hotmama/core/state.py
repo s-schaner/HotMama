@@ -164,6 +164,8 @@ class SetState:
     rotations_completed: int = 0
     finished: bool = False
     won_by: Team | None = None
+    our_side: str | None = None
+    """"near"/"far" as seen by the calibrated camera (sides_set event)."""
     rally_in_progress: bool = False
     rally_started_at: datetime | None = None
     subs_used: int = 0
@@ -222,6 +224,7 @@ class SetState:
             "liberos": list(self.liberos),
             "finished": self.finished,
             "won_by": self.won_by.value if self.won_by else None,
+            "our_side": self.our_side,
             "decided": self.decided.value if self.decided else None,
             "set_point": self.set_point.value if self.set_point else None,
             "rally_in_progress": self.rally_in_progress,
@@ -250,6 +253,12 @@ class MatchState:
     cv_observations: int = 0
     proposals: dict[str, ProposalRecord] = field(default_factory=dict)
     """Pending CV proposals by observation event_id — confirm or dismiss."""
+    heatmap_cells: list[int] = field(default_factory=lambda: [0] * 18)
+    """Summed 3×6 court cell grid (near rows first) from player_tracks."""
+    heatmap_near: int = 0
+    heatmap_far: int = 0
+    heatmap_oob: int = 0
+    heatmap_observations: int = 0
     session_closed: bool = False
     applied_events: int = 0
     last_event_id: str | None = None
@@ -299,6 +308,15 @@ class MatchState:
             "notes": list(self.notes),
             "warnings": list(self.warnings),
             "cv_observations": self.cv_observations,
+            "court_heatmap": {
+                "cols": 3,
+                "rows": 6,
+                "cells": list(self.heatmap_cells),
+                "near_hits": self.heatmap_near,
+                "far_hits": self.heatmap_far,
+                "out_of_bounds_hits": self.heatmap_oob,
+                "observations": self.heatmap_observations,
+            },
             "proposals": [
                 record.to_dict()
                 for record in sorted(self.proposals.values(), key=lambda r: r.occurred_at)

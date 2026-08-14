@@ -202,6 +202,18 @@ class TimeoutCalled(BaseEvent):
     team: Team
 
 
+class SidesSet(BaseEvent):
+    """Which side of the net is OURS, as seen by the calibrated camera.
+
+    Teams switch sides between sets, so this is per-set state. It is the
+    bridge that lets camera-relative CV output ("ball landed near") become
+    team-attributed ("their attack scored on us").
+    """
+
+    type: Literal["sides_set"] = "sides_set"
+    our_side: Literal["near", "far"]
+
+
 class SetEnded(BaseEvent):
     """Explicit human confirmation — the engine flags a decided set, people end it."""
 
@@ -252,6 +264,7 @@ AnyEvent = Annotated[
     | SubMade
     | LiberoSwap
     | TimeoutCalled
+    | SidesSet
     | SetEnded
     | SessionClosed
     | NoteAdded
